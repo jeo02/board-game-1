@@ -28,60 +28,45 @@ The server serves the built app and game connections on **http://localhost:3001*
 
 ## Hosting
 
-The app is live at **https://game-night.azurewebsites.net**.
-
-It runs as a single always-on Azure App Service instance. Invite links are generated from the browser's current origin, so they automatically use the Azure URL with no configuration.
+Live at **https://game-night.azurewebsites.net** on Azure App Service.
 
 | | |
 |---|---|
-| **URL** | https://game-night.azurewebsites.net |
-| **Cloud** | Azure App Service (Linux) |
-| **Subscription** | Visual Studio Enterprise Subscription (`Default Directory` tenant) |
-| **Resource group** | `rg-game-night` |
-| **App name** | `game-night` |
-| **App Service plan** | `asp-game-night`, SKU **B1**, always-on |
-| **Region** | **centralus** |
-| **Runtime** | Node 24 LTS, started with `npm start` |
-| **Health check** | `/api/health` |
+| Resource group | `rg-game-night` |
+| App name | `game-night` |
+| Plan | `asp-game-night`, B1, always-on |
+| Region | `centralus` |
+| Runtime | Node 24 LTS, `npm start` |
+| Health check | `/api/health` |
 
-The plan is in `centralus` rather than a coastal region because the subscription has **no B1 quota in eastus or westus2**. If you recreate this elsewhere, expect to hunt for a region with quota.
-
-Resource IDs are intentionally not recorded here. Run `az account show` to get the subscription and tenant IDs.
-
-### Redeploying after a change
+### Redeploy
 
 ```powershell
-cd <repo root>
 Compress-Archive -Path index.html,package.json,package-lock.json,vite.config.js,server,src,public -DestinationPath deploy.zip -Force
 az webapp deploy --resource-group rg-game-night --name game-night --src-path deploy.zip --type zip
 ```
 
-App Service builds the app server-side (`npm install` then `npm run build`) because `SCM_DO_BUILD_DURING_DEPLOYMENT=true`, then starts it with `npm start`. Do not include `node_modules` or `dist` in the zip.
+App Service runs `npm install` and `npm run build` server-side, so leave `node_modules` and `dist` out of the zip. Nothing deploys automatically — pushing to GitHub does not update the live site. A deploy takes 5–8 minutes and restarts the app, ending games in progress.
 
-Nothing deploys automatically. Editing code locally — or pushing to GitHub — does **not** change the live site until you run the command above. A deploy takes roughly 5–8 minutes, almost all of it the server-side `npm install` and Vite build, and it restarts the container at the end, which ends any games in progress.
-
-The deploy command may report a `504 GatewayTimeout` while the server-side build is still running. That is the status poll timing out, not a failed deploy. Check the real result with:
+A `504 GatewayTimeout` from the deploy command is the status poll giving up while the build runs, not a failure. Check the real result:
 
 ```powershell
 az webapp log deployment show --resource-group rg-game-night --name game-night
 ```
 
-### Configuration that matters
+### Gotchas
 
-- **WebSockets must stay enabled.** App Service disables them by default, and Socket.IO silently degrades to slow HTTP long-polling without them.
-- **Always On is enabled** so the container is not unloaded while idle.
+- **WebSockets must stay enabled.** App Service disables them by default and Socket.IO silently falls back to long-polling.
+- **Keep one instance.** Rooms are in memory and are not shared between instances.
+- **No B1 quota in eastus or westus2** on this subscription, hence `centralus`.
 
 ```powershell
 az webapp config set --resource-group rg-game-night --name game-night --web-sockets-enabled true --always-on true --startup-file "npm start"
 ```
 
-### Keep it to one instance
-
-Rooms live in memory, so do not scale out. Two instances would split players across servers that cannot see each other. Every deploy or restart also ends in-progress games and returns players to the lobby.
-
 ### Cost
 
-The B1 plan is roughly $12–13/month and is the only meaningful charge. To stop billing without deleting anything, stop the app (`az webapp stop`); to remove everything, delete the group:
+The B1 plan is ~$12–13/month and bills whether or not the app is running — stopping the app does not stop charges, since the plan is the billed resource. To stop paying, delete the group:
 
 ```powershell
 az group delete --name rg-game-night
