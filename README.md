@@ -26,52 +26,44 @@ npm start
 
 The server serves the built app and game connections on **http://localhost:3001** (or `PORT`). Rooms are stored in memory, support a single server instance, and reset when the server restarts. Disconnected players have 30 seconds to reconnect; otherwise they leave the room. This first version has no accounts or persistent history.
 
-## Hosting
+### Deploy to Azure App Service
 
-Live at **https://game-night.azurewebsites.net** on Azure App Service.
+The `infra` directory contains Bicep that creates the resource group, free
+Linux App Service plan, and Node.js web app:
 
-| | |
-|---|---|
-| Resource group | `rg-game-night` |
-| App name | `game-night` |
-| Plan | `asp-game-night`, B1, always-on |
-| Region | `centralus` |
-| Runtime | Node 24 LTS, `npm start` |
-| Health check | `/api/health` |
+| Resource | Current deployment |
+| --- | --- |
+| App URL | [early-career-game-night-jeo02.azurewebsites.net](https://early-career-game-night-jeo02.azurewebsites.net) |
+| Resource group | `rg-early-career-game-night` |
+| Region | West US 3 |
+| App Service plan | `juanospina_asp_7601` |
+| Web app | `early-career-game-night-jeo02` |
+| Runtime | Node.js 22 LTS on Linux |
+| Pricing tier | F1 Free, one instance |
 
-### Redeploy
-
-```powershell
-Compress-Archive -Path index.html,package.json,package-lock.json,vite.config.js,server,src,public -DestinationPath deploy.zip -Force
-az webapp deploy --resource-group rg-game-night --name game-night --src-path deploy.zip --type zip
+```sh
+az deployment sub create \
+  --name early-career-game-night \
+  --location westus3 \
+  --template-file infra/main.bicep \
+  --parameters infra/main.bicepparam
 ```
 
-App Service runs `npm install` and `npm run build` server-side, so leave `node_modules` and `dist` out of the zip. Nothing deploys automatically — pushing to GitHub does not update the live site. A deploy takes 5–8 minutes and restarts the app, ending games in progress.
+After provisioning, deploy the application source:
 
-A `504 GatewayTimeout` from the deploy command is the status poll giving up while the build runs, not a failure. Check the real result:
-
-```powershell
-az webapp log deployment show --resource-group rg-game-night --name game-night
+```sh
+az webapp up \
+  --name early-career-game-night-jeo02 \
+  --resource-group rg-early-career-game-night \
+  --plan juanospina_asp_7601 \
+  --location westus3 \
+  --sku F1 \
+  --runtime "NODE:22-lts"
 ```
 
-### Gotchas
-
-- **WebSockets must stay enabled.** App Service disables them by default and Socket.IO silently falls back to long-polling.
-- **Keep one instance.** Rooms are in memory and are not shared between instances.
-- **No B1 quota in eastus or westus2** on this subscription, hence `centralus`.
-
-```powershell
-az webapp config set --resource-group rg-game-night --name game-night --web-sockets-enabled true --always-on true --startup-file "npm start"
-```
-
-### Cost
-
-The B1 plan is ~$12–13/month and bills whether or not the app is running — stopping the app does not stop charges, since the plan is the billed resource. To stop paying, delete the group:
-
-```powershell
-az group delete --name rg-game-night
-```
-
+The free F1 tier can unload or restart an idle app. A restart clears all
+active rooms, so keep the app at one instance and move to a Basic plan if
+always-on lobby availability becomes important.
 
 ## Verify
 
