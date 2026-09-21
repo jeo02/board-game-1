@@ -26,6 +26,45 @@ npm start
 
 The server serves the built app and game connections on **http://localhost:3001** (or `PORT`). Rooms are stored in memory, support a single server instance, and reset when the server restarts. Disconnected players have 30 seconds to reconnect; otherwise they leave the room. This first version has no accounts or persistent history.
 
+### Deploy to Azure App Service
+
+The `infra` directory contains Bicep that creates the resource group, free
+Linux App Service plan, and Node.js web app:
+
+| Resource | Current deployment |
+| --- | --- |
+| App URL | [early-career-game-night-jeo02.azurewebsites.net](https://early-career-game-night-jeo02.azurewebsites.net) |
+| Resource group | `rg-early-career-game-night` |
+| Region | West US 3 |
+| App Service plan | `juanospina_asp_7601` |
+| Web app | `early-career-game-night-jeo02` |
+| Runtime | Node.js 22 LTS on Linux |
+| Pricing tier | F1 Free, one instance |
+
+```sh
+az deployment sub create \
+  --name early-career-game-night \
+  --location westus3 \
+  --template-file infra/main.bicep \
+  --parameters infra/main.bicepparam
+```
+
+After provisioning, deploy the application source:
+
+```sh
+az webapp up \
+  --name early-career-game-night-jeo02 \
+  --resource-group rg-early-career-game-night \
+  --plan juanospina_asp_7601 \
+  --location westus3 \
+  --sku F1 \
+  --runtime "NODE:22-lts"
+```
+
+The free F1 tier can unload or restart an idle app. A restart clears all
+active rooms, so keep the app at one instance and move to a Basic plan if
+always-on lobby availability becomes important.
+
 ## Verify
 
 ```sh
