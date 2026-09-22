@@ -6,6 +6,8 @@ import {
   startGame,
   telephoneSubmit,
   chooseWord,
+  chooseCharade,
+  answerTrivia,
   guess,
   addStroke,
   editCanvas,
@@ -153,4 +155,42 @@ test("guesses at or after the deadline cannot earn points", () => {
   chooseWord(r, "p0", r.choices[0]);
   assert.throws(() => guess(r, "p1", r.word, r.deadline), /Time’s up/);
   assert.equal(r.players[1].score, 0);
+});
+
+test("charades keeps prompts private, scores guesses and rotates performers", () => {
+  const r = setup("charades", 2);
+  startGame(r, "p0");
+  assert.equal(r.phase, "choose");
+  assert.equal(viewFor(r, "p1").choices, undefined);
+  chooseCharade(r, "p0", r.choices[0]);
+  assert.equal(r.phase, "acting");
+  assert.equal(viewFor(r, "p1").word, null);
+  guess(r, "p1", r.word);
+  assert.equal(r.phase, "reveal");
+  assert.ok(r.players[1].score >= 100);
+  tick(r, r.deadline + 1);
+  assert.equal(r.drawer, "p1");
+});
+
+test("trivia hides answers, scores correct responses and finishes five questions", () => {
+  const r = setup("trivia", 2);
+  startGame(r, "p0");
+  assert.equal(r.phase, "question");
+  assert.equal(viewFor(r, "p0").trivia.answer, undefined);
+  answerTrivia(r, "p0", r.trivia.answer, r.deadline - 15000);
+  answerTrivia(
+    r,
+    "p1",
+    r.trivia.choices.find((c) => c !== r.trivia.answer),
+  );
+  assert.equal(r.phase, "reveal");
+  assert.equal(viewFor(r, "p1").trivia.answer, r.trivia.answer);
+  assert.ok(r.players[0].score > 100);
+  for (let i = 1; i < 5; i++) {
+    tick(r, r.deadline + 1);
+    answerTrivia(r, "p0", r.trivia.answer);
+    answerTrivia(r, "p1", r.trivia.answer);
+  }
+  tick(r, r.deadline + 1);
+  assert.equal(r.phase, "results");
 });

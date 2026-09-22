@@ -10,6 +10,8 @@ import {
   startGame,
   telephoneSubmit,
   chooseWord,
+  chooseCharade,
+  answerTrivia,
   guess,
   addStroke,
   editCanvas,
@@ -113,6 +115,9 @@ io.on("connection", (socket) => {
       if (action === "start") startGame(room, id);
       else if (action === "submit") telephoneSubmit(room, id, payload.text);
       else if (action === "choose") chooseWord(room, id, payload.word);
+      else if (action === "chooseCharade")
+        chooseCharade(room, id, payload.word);
+      else if (action === "answer") answerTrivia(room, id, payload.choice);
       else if (action === "guess") guess(room, id, payload.text);
       else if (action === "stroke") addStroke(room, id, payload);
       else if (action === "canvas") editCanvas(room, id, payload.action);

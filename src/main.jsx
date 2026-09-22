@@ -4,12 +4,14 @@ import { io } from "socket.io-client";
 import {
   ArrowRight,
   ArrowUpRight,
+  Brain,
   Check,
   ChevronLeft,
   Clock3,
   Copy,
   Crown,
   Dice5,
+  Drama,
   Eraser,
   Heart,
   Link,
@@ -51,8 +53,51 @@ const GAMES = {
     tag: "Quick thinking",
     color: "orange",
     minimum: 2,
+    category: "Drawing & guessing",
+    badge: "THE CROWD FAVORITE",
+    caption: "bad drawings make great memories",
+    number: "02",
+    activity: "Drawing",
+  },
+  trivia: {
+    name: "Trivia Dash",
+    label: "FAST FACTS. FASTER FINGERS.",
+    description:
+      "Race through five crowd-friendly questions and prove your random knowledge finally has a purpose.",
+    players: "2–8 players",
+    time: "5 min",
+    tag: "Brainy & breezy",
+    color: "green",
+    minimum: 2,
+    category: "Party games",
+    badge: "THE BRAIN BREAK",
+    caption: "tiny facts, enormous bragging rights",
+    number: "03",
+    activity: "Trivia",
+  },
+  charades: {
+    name: "Act It Out",
+    label: "NO WORDS. BIG ENERGY.",
+    description:
+      "Pick a ridiculous prompt, perform it on your call or in the room, and watch your friends guess.",
+    players: "2–8 players",
+    time: "5–15 min",
+    tag: "Camera-ready",
+    color: "blue",
+    minimum: 2,
+    category: "Party games",
+    badge: "THE SPOTLIGHT",
+    caption: "commit to the bit and never explain",
+    number: "04",
+    activity: "Acting",
   },
 };
+GAMES.telephone.category = "Party games";
+GAMES.telephone.badge = "THE ICEBREAKER";
+GAMES.telephone.caption = "a perfectly imperfect chain reaction";
+GAMES.telephone.number = "01";
+GAMES.telephone.activity = "Drawing";
+GAMES.scribble.category = "Drawing & guessing";
 const PROMPTS = [
   "A penguin presenting a very important spreadsheet",
   "An astronaut who forgot their lunch",
@@ -178,6 +223,79 @@ function Illustration({ kind, small = false }) {
             stroke="#302c41"
             strokeWidth="2"
             strokeLinecap="round"
+          />
+        </>
+      ) : kind === "trivia" ? (
+        <>
+          <circle cx="280" cy="127" r="111" fill="#bddcc8" opacity=".55" />
+          <g transform="rotate(-7 280 125)">
+            <rect
+              x="151"
+              y="42"
+              width="258"
+              height="166"
+              rx="18"
+              fill="#fffdf5"
+              stroke="#302c41"
+              strokeWidth="3"
+            />
+            <text
+              x="280"
+              y="130"
+              textAnchor="middle"
+              fill="#5d9272"
+              fontSize="82"
+              fontFamily="Georgia"
+              fontWeight="bold"
+            >
+              ?
+            </text>
+            <path
+              d="M180 73h49M330 73h49M180 178h49M330 178h49"
+              stroke="#a7cbb5"
+              strokeWidth="8"
+              strokeLinecap="round"
+            />
+          </g>
+          <path
+            d="m101 96 5 14 14 5-14 5-5 14-5-14-14-5 14-5zm355 46 4 11 11 4-11 4-4 11-4-11-11-4 11-4z"
+            fill="#f8d46e"
+            stroke="#302c41"
+            strokeWidth="2"
+          />
+        </>
+      ) : kind === "charades" ? (
+        <>
+          <circle cx="280" cy="127" r="111" fill="#bfd7e8" opacity=".62" />
+          <path
+            d="M182 58c31-21 67 1 98 1s67-22 98-1v115c-31 22-67 0-98 0s-67 22-98 0z"
+            fill="#fffdf5"
+            stroke="#302c41"
+            strokeWidth="3"
+          />
+          <path
+            d="M214 91c17-12 38-4 47 13-18 12-38 10-47-13zm85 13c9-17 30-25 47-13-9 23-29 25-47 13z"
+            fill="#82afd0"
+            stroke="#302c41"
+            strokeWidth="3"
+          />
+          <path
+            d="M237 139q43 35 86 0"
+            stroke="#302c41"
+            strokeWidth="4"
+            strokeLinecap="round"
+          />
+          <path
+            d="M123 77q-32 48 17 81m297-81q32 48-17 81"
+            stroke="#718fa7"
+            strokeWidth="3"
+            strokeDasharray="7 8"
+          />
+          <path
+            d="m108 62 4 11 11 4-11 4-4 11-4-11-11-4 11-4zm344 111 4 11 11 4-11 4-4 11-4-11-11-4 11-4z"
+            fill="#f8d46e"
+            stroke="#302c41"
+            strokeWidth="2"
           />
         </>
       ) : (
@@ -543,7 +661,7 @@ function App() {
                 </h2>
               </div>
               <span className="collection-count">
-                02 games · endless inside jokes
+                04 games · endless inside jokes
               </span>
             </div>
             <div className="filter-row">
@@ -565,28 +683,20 @@ function App() {
             <div className="game-grid">
               {Object.entries(GAMES)
                 .filter(
-                  ([key]) => filter !== "Party games" || key === "telephone",
+                  ([, info]) =>
+                    filter === "All games" || info.category === filter,
                 )
                 .map(([key, info]) => (
                   <article className={`game-card ${info.color}`} key={key}>
                     <div className="art-panel">
                       <div className="art-badges">
                         <span>
-                          <span className="tiny-dot" />{" "}
-                          {key === "telephone"
-                            ? "THE ICEBREAKER"
-                            : "THE CROWD FAVORITE"}
+                          <span className="tiny-dot" /> {info.badge}
                         </span>
-                        <span className="number">
-                          0{key === "telephone" ? 1 : 2}
-                        </span>
+                        <span className="number">{info.number}</span>
                       </div>
                       <Illustration kind={key} />
-                      <span className="art-caption">
-                        {key === "telephone"
-                          ? "a perfectly imperfect chain reaction"
-                          : "bad drawings make great memories"}
-                      </span>
+                      <span className="art-caption">{info.caption}</span>
                     </div>
                     <div className="card-body">
                       <div className="card-title-row">
@@ -606,8 +716,14 @@ function App() {
                           {info.time}
                         </span>
                         <span>
-                          <Pencil size={14} />
-                          Drawing
+                          {key === "trivia" ? (
+                            <Brain size={14} />
+                          ) : key === "charades" ? (
+                            <Drama size={14} />
+                          ) : (
+                            <Pencil size={14} />
+                          )}
+                          {info.activity}
                         </span>
                       </div>
                       <div className="card-actions">
@@ -781,6 +897,10 @@ function App() {
                         >
                           {key === "telephone" ? (
                             <MessageCircle size={20} />
+                          ) : key === "trivia" ? (
+                            <Brain size={20} />
+                          ) : key === "charades" ? (
+                            <Drama size={20} />
                           ) : (
                             <Pencil size={20} />
                           )}
@@ -801,7 +921,7 @@ function App() {
                       placeholder="The game night crew"
                     />
                   </label>
-                  {game === "scribble" && (
+                  {["scribble", "charades"].includes(game) && (
                     <div className="form-row">
                       <label>
                         Rounds
@@ -812,7 +932,7 @@ function App() {
                         </select>
                       </label>
                       <label>
-                        Drawing time
+                        {game === "charades" ? "Acting time" : "Drawing time"}
                         <select name="seconds" defaultValue="60">
                           <option value="30">30 seconds</option>
                           <option value="60">60 seconds</option>
@@ -890,11 +1010,23 @@ function App() {
                         "Draw the sentence you receive, then describe the drawing passed to you. Keep the previous turn a secret!",
                         "Once every story has made the rounds, reveal the entire chain together. No points. Just plot twists.",
                       ]
-                    : [
-                        "Gather 2–8 players and choose your number of rounds and drawing time.",
-                        "Take turns picking a secret word and drawing it. Everyone else types their guesses before time runs out.",
-                        "Faster guesses earn more points. Artists get points for each correct guess. The highest score wins!",
-                      ]
+                    : game === "scribble"
+                      ? [
+                          "Gather 2–8 players and choose your number of rounds and drawing time.",
+                          "Take turns picking a secret word and drawing it. Everyone else types their guesses before time runs out.",
+                          "Faster guesses earn more points. Artists get points for each correct guess. The highest score wins!",
+                        ]
+                      : game === "trivia"
+                        ? [
+                            "Gather 2–8 players. Every game has five quick multiple-choice questions.",
+                            "Lock in an answer before the 20-second timer ends. Answers stay secret until everyone responds or time runs out.",
+                            "Correct answers earn points, and faster answers earn a bonus. The highest score wins!",
+                          ]
+                        : [
+                            "Gather 2–8 players on a call or in the same room and choose your rounds and acting time.",
+                            "Take turns choosing a private prompt, then act it out without speaking or typing clues.",
+                            "Everyone else races to type the exact prompt. Fast guesses and helpful performers both earn points!",
+                          ]
                   : [
                       "Create a room, pick a game, and share the six-character code with your friends.",
                       "Join on separate devices or browsers. Keep a call open if you’re playing remotely.",
@@ -983,9 +1115,11 @@ function Room({ room, act, open, copy }) {
               </span>
               <span>
                 <Clock3 size={16} />
-                {room.mode === "scribble"
+                {["scribble", "charades"].includes(room.mode)
                   ? `${room.rounds} rounds · ${room.seconds}s turns`
-                  : "Everyone writes, draws & guesses"}
+                  : room.mode === "trivia"
+                    ? "5 questions · 20s each"
+                    : "Everyone writes, draws & guesses"}
               </span>
             </div>
             <button
@@ -1038,6 +1172,10 @@ function Room({ room, act, open, copy }) {
           <section className="play-panel">
             {room.mode === "telephone" ? (
               <Telephone room={room} act={act} />
+            ) : room.mode === "trivia" ? (
+              <Trivia room={room} act={act} />
+            ) : room.mode === "charades" ? (
+              <Charades room={room} act={act} />
             ) : (
               <Scribble room={room} act={act} />
             )}
@@ -1047,7 +1185,7 @@ function Room({ room, act, open, copy }) {
               <h3>{room.mode === "telephone" ? "The crew" : "Scoreboard"}</h3>
               <Users size={18} />
             </div>
-            <PlayerList room={room} scores={room.mode === "scribble"} />
+            <PlayerList room={room} scores={room.mode !== "telephone"} />
             {room.mode === "telephone" ? (
               <div className="friendly-note">
                 <Sparkles size={20} />
@@ -1056,8 +1194,16 @@ function Room({ room, act, open, copy }) {
                   yourself!
                 </span>
               </div>
-            ) : (
+            ) : ["scribble", "charades"].includes(room.mode) ? (
               <GuessBox room={room} act={act} />
+            ) : (
+              <div className="friendly-note">
+                <Brain size={20} />
+                <span>
+                  Trust your first instinct. It is usually at least
+                  entertaining.
+                </span>
+              </div>
             )}
           </aside>
         </div>
@@ -1084,7 +1230,7 @@ function PlayerList({ room, scores = false }) {
                 {!p.connected
                   ? "Reconnecting…"
                   : p.id === room.drawer &&
-                      room.mode === "scribble" &&
+                      ["scribble", "charades"].includes(room.mode) &&
                       room.phase !== "lobby"
                     ? "The artist"
                     : room.submitted?.includes(p.id)
@@ -1325,6 +1471,152 @@ function Scribble({ room, act }) {
     </>
   );
 }
+function Charades({ room, act }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 250);
+    return () => clearInterval(timer);
+  }, []);
+  const performer = room.players.find((p) => p.id === room.drawer);
+  const youAct = room.you === room.drawer;
+  return (
+    <>
+      <div className="play-title">
+        <span className="eyebrow">
+          ROUND {room.round + 1} OF {room.rounds} · PERFORMER{" "}
+          {(room.turn % room.players.length) + 1} OF {room.players.length}
+        </span>
+        <span
+          className={`timer ${room.deadline - now < 11000 ? "urgent" : ""}`}
+        >
+          <Clock3 size={17} />
+          {Math.max(0, Math.ceil((room.deadline - now) / 1000))}s
+        </span>
+      </div>
+      {room.phase === "choose" ? (
+        <div className="choose-screen">
+          <span className="big-icon">
+            <Drama size={40} />
+          </span>
+          <h2>
+            {youAct
+              ? "Choose your moment in the spotlight."
+              : `${performer?.name} is choosing a prompt.`}
+          </h2>
+          <p>
+            {youAct
+              ? "Pick one, then act it out without speaking or typing clues."
+              : "Eyes up. Their performance is about to begin."}
+          </p>
+          {youAct && (
+            <div className="word-choices">
+              {room.choices?.map((word) => (
+                <button
+                  className="button outline"
+                  key={word}
+                  onClick={() => act("chooseCharade", { word })}
+                >
+                  {word}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="charades-stage">
+          <span className="big-icon">
+            <Drama size={42} />
+          </span>
+          <h2>
+            {room.phase === "reveal"
+              ? "The prompt was…"
+              : youAct
+                ? "You’re on!"
+                : `${performer?.name} is acting`}
+          </h2>
+          <p>
+            {room.phase === "reveal"
+              ? "Take a bow. The next performer is up soon."
+              : youAct
+                ? "Commit to the bit. No words, sounds, or typed hints."
+                : "Watch the performance and type your guesses in the guessing corner."}
+          </p>
+          <strong className="charades-prompt">
+            {room.word || "Keep your eyes on the performer"}
+          </strong>
+          {room.phase === "reveal" && (
+            <div className="round-result">
+              <Sparkles size={19} />
+              {room.guessed.length
+                ? `${room.guessed.length} ${room.guessed.length === 1 ? "player got it" : "players got it"}!`
+                : "An unforgettable performance. A mysterious prompt."}
+            </div>
+          )}
+        </div>
+      )}
+    </>
+  );
+}
+function Trivia({ room, act }) {
+  const [now, setNow] = useState(Date.now());
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 250);
+    return () => clearInterval(timer);
+  }, []);
+  useEffect(() => setBusy(false), [room.round, room.phase]);
+  const answered = room.answered.includes(room.you);
+  return (
+    <>
+      <div className="play-title">
+        <span className="eyebrow">QUESTION {room.round + 1} OF 5</span>
+        <span className={`timer ${room.deadline - now < 7000 ? "urgent" : ""}`}>
+          <Clock3 size={17} />
+          {Math.max(0, Math.ceil((room.deadline - now) / 1000))}s
+        </span>
+      </div>
+      <div className="trivia-panel">
+        <span className="big-icon">
+          <Brain size={40} />
+        </span>
+        <h2>{room.trivia.question}</h2>
+        <p>
+          {room.phase === "reveal"
+            ? "Answer revealed. Scores include a speed bonus."
+            : answered
+              ? "Locked in! Waiting for the rest of the crew."
+              : "Choose quickly. Your first answer is final."}
+        </p>
+        <div className="trivia-choices">
+          {room.trivia.choices.map((choice, index) => {
+            const correct =
+              room.phase === "reveal" && choice === room.trivia.answer;
+            const yours = choice === room.trivia.yourAnswer;
+            return (
+              <button
+                key={choice}
+                className={`trivia-choice ${correct ? "correct" : ""} ${yours ? "yours" : ""}`}
+                disabled={answered || room.phase === "reveal" || busy}
+                onClick={async () => {
+                  setBusy(true);
+                  await act("answer", { choice });
+                  setBusy(false);
+                }}
+              >
+                <span>{String.fromCharCode(65 + index)}</span>
+                {choice}
+                {correct && <Check size={18} />}
+              </button>
+            );
+          })}
+        </div>
+        <div className="answer-progress">
+          {room.answered.length} of {room.players.length} answers locked in
+        </div>
+      </div>
+    </>
+  );
+}
 function GuessBox({ room, act }) {
   const [guess, setGuess] = useState("");
   const messages = useRef(null);
@@ -1332,7 +1624,7 @@ function GuessBox({ room, act }) {
     messages.current?.scrollTo({ top: messages.current.scrollHeight });
   }, [room.messages]);
   const canGuess =
-    room.phase === "drawing" &&
+    room.phase === (room.mode === "charades" ? "acting" : "drawing") &&
     room.you !== room.drawer &&
     !room.guessed?.includes(room.you);
   return (
@@ -1366,7 +1658,9 @@ function GuessBox({ room, act }) {
             room.guessed?.includes(room.you)
               ? "You got it! Nice work."
               : room.you === room.drawer
-                ? "Your art does the talking"
+                ? room.mode === "charades"
+                  ? "Your performance does the talking"
+                  : "Your art does the talking"
                 : "Type your guess…"
           }
           value={guess}
