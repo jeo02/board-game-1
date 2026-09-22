@@ -8,12 +8,14 @@ async function create(page, game, name = "Alex") {
     .getByRole("button", { name: "Create a room" })
     .click();
   await page.getByLabel("Your name").fill(name);
-  if (game === "Scribble Club") {
+  if (["Scribble Club", "Act It Out"].includes(game)) {
     await page
       .getByRole("combobox", { name: "Rounds", exact: true })
       .selectOption("1");
     await page
-      .getByRole("combobox", { name: "Drawing time" })
+      .getByRole("combobox", {
+        name: game === "Act It Out" ? "Acting time" : "Drawing time",
+      })
       .selectOption("30");
   }
   await page.getByRole("button", { name: "Create room", exact: true }).click();
@@ -25,7 +27,9 @@ async function create(page, game, name = "Alex") {
 async function join(browser, code, name) {
   const context = await browser.newContext();
   const page = await context.newPage();
-  await page.goto(new URL(`/?room=${code}`, test.info().project.use.baseURL).href);
+  await page.goto(
+    new URL(`/?room=${code}`, test.info().project.use.baseURL).href,
+  );
   await page.getByLabel("Your name").fill(name);
   await page.getByRole("button", { name: "Join room", exact: true }).click();
   await expect(
@@ -50,15 +54,15 @@ test("landing page, game filters, rules, invalid room and mobile layout", async 
   page.on("pageerror", (err) => errors.push(err.message));
   await page.goto("/");
   await expect(page).toHaveTitle("Early Career Game Night");
-  await expect(page.locator(".game-card")).toHaveCount(2);
+  await expect(page.locator(".game-card")).toHaveCount(4);
   await page.screenshot({
     path: "test-results/home-desktop.png",
     fullPage: true,
   });
   await page.getByRole("button", { name: "Party games", exact: true }).click();
-  await expect(page.locator(".game-card")).toHaveCount(1);
+  await expect(page.locator(".game-card")).toHaveCount(3);
   await page.getByRole("button", { name: "All games", exact: true }).click();
-  await expect(page.locator(".game-card")).toHaveCount(2);
+  await expect(page.locator(".game-card")).toHaveCount(4);
   await page.getByRole("button", { name: "How to play" }).first().click();
   await expect(page.locator("dialog")).toContainText("Gather 3–8 players");
   await page.keyboard.press("Escape");
@@ -203,5 +207,44 @@ test("scribble synchronizes drawing, hides words, scores guesses, and finishes",
   await expect(
     guest.getByRole("heading", { name: "Pull up a chair." }),
   ).toBeVisible();
+  await guest.context().close();
+});
+
+test("trivia and charades play through their multiplayer loops", async ({
+  page,
+  browser,
+}) => {
+  let code = await create(page, "Trivia Dash");
+  let guest = await join(browser, code, "Taylor");
+  await page.getByRole("button", { name: "Start game" }).click();
+  for (let question = 1; question <= 5; question++) {
+    await expect(page.getByText(`QUESTION ${question} OF 5`)).toBeVisible({
+      timeout: 10000,
+    });
+    await page.locator(".trivia-choice").first().click();
+    await guest.locator(".trivia-choice").first().click();
+    await expect(page.getByText("Answer revealed.")).toBeVisible();
+  }
+  await expect(page.locator(".final-scores")).toBeVisible({ timeout: 10000 });
+  await guest.context().close();
+
+  await page.getByRole("button", { name: "All games" }).click();
+  await page.getByRole("button", { name: "Leave room" }).click();
+  code = await create(page, "Act It Out");
+  guest = await join(browser, code, "Morgan");
+  await page.getByRole("button", { name: "Start game" }).click();
+  let prompt = await page.locator(".word-choices button").first().innerText();
+  await page.locator(".word-choices button").first().click();
+  await expect(guest.locator(".charades-prompt")).not.toHaveText(prompt);
+  await guest.getByLabel("Your guess", { exact: true }).fill(prompt);
+  await guest.getByRole("button", { name: "Send guess" }).click();
+  await expect(page.getByText("The prompt was…")).toBeVisible();
+
+  await expect(guest.locator(".word-choices")).toBeVisible({ timeout: 10000 });
+  prompt = await guest.locator(".word-choices button").first().innerText();
+  await guest.locator(".word-choices button").first().click();
+  await page.getByLabel("Your guess", { exact: true }).fill(prompt);
+  await page.getByRole("button", { name: "Send guess" }).click();
+  await expect(page.locator(".final-scores")).toBeVisible({ timeout: 10000 });
   await guest.context().close();
 });

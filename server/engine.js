@@ -26,13 +26,88 @@ export const WORDS = [
   "airplane",
   "birthday cake",
 ];
+export const CHARADES_WORDS = [
+  "walking on the moon",
+  "making a sandwich",
+  "riding a roller coaster",
+  "taking a selfie",
+  "opening a stubborn jar",
+  "winning the lottery",
+  "getting caught in the rain",
+  "building a snowman",
+  "missing the bus",
+  "dancing at a wedding",
+  "trying to catch a fly",
+  "playing air guitar",
+  "wrapping a present",
+  "walking a tiny dog",
+  "blowing out birthday candles",
+  "stepping on a building block",
+  "learning to skateboard",
+  "carrying too many groceries",
+];
+export const TRIVIA_QUESTIONS = [
+  {
+    question: "Which planet has the most moons?",
+    choices: ["Jupiter", "Saturn", "Neptune", "Uranus"],
+    answer: "Saturn",
+  },
+  {
+    question: "What is the largest ocean on Earth?",
+    choices: ["Atlantic", "Indian", "Pacific", "Arctic"],
+    answer: "Pacific",
+  },
+  {
+    question: "Which board game features Boardwalk and Park Place?",
+    choices: ["Clue", "Monopoly", "Risk", "Sorry!"],
+    answer: "Monopoly",
+  },
+  {
+    question: "How many sides does a dodecagon have?",
+    choices: ["10", "11", "12", "14"],
+    answer: "12",
+  },
+  {
+    question: "What is the capital of Australia?",
+    choices: ["Sydney", "Melbourne", "Canberra", "Perth"],
+    answer: "Canberra",
+  },
+  {
+    question: "Which instrument has 88 keys?",
+    choices: ["Piano", "Harp", "Accordion", "Organ"],
+    answer: "Piano",
+  },
+  {
+    question: "What is the fastest land animal?",
+    choices: ["Lion", "Pronghorn", "Cheetah", "Greyhound"],
+    answer: "Cheetah",
+  },
+  {
+    question: "Which language has the most native speakers?",
+    choices: ["English", "Hindi", "Spanish", "Mandarin Chinese"],
+    answer: "Mandarin Chinese",
+  },
+  {
+    question: "What does a group of crows traditionally get called?",
+    choices: ["A parliament", "A murder", "A crash", "A charm"],
+    answer: "A murder",
+  },
+  {
+    question: "Which element has the chemical symbol Au?",
+    choices: ["Silver", "Copper", "Gold", "Argon"],
+    answer: "Gold",
+  },
+];
 export const clean = (value, max = 100) =>
   typeof value === "string" ? value.trim().slice(0, max) : "";
 const assert = (condition, message) => {
   if (!condition) throw new Error(message);
 };
 export function createRoom(name, mode, rounds = 2, seconds = 60) {
-  assert(["telephone", "scribble"].includes(mode), "Choose a game first.");
+  assert(
+    ["telephone", "scribble", "trivia", "charades"].includes(mode),
+    "Choose a game first.",
+  );
   return {
     code: randomBytes(3).toString("hex").toUpperCase(),
     mode,
@@ -46,6 +121,9 @@ export function createRoom(name, mode, rounds = 2, seconds = 60) {
     chains: [],
     strokes: [],
     messages: [],
+    trivia: null,
+    triviaAnswers: {},
+    triviaOrder: [],
     turn: 0,
     round: 0,
     updatedAt: Date.now(),
@@ -85,11 +163,16 @@ export function startGame(room, id) {
   room.messages = [];
   room.submissions = {};
   room.strokes = [];
+  room.trivia = null;
+  room.triviaAnswers = {};
+  room.triviaOrder = [];
   if (room.mode === "telephone") {
     room.chains = room.players.map((p) => ({ owner: p.name, entries: [] }));
     room.phase = "prompt";
     room.deadline = null;
-  } else startDrawingTurn(room);
+  } else if (room.mode === "scribble") startDrawingTurn(room);
+  else if (room.mode === "charades") startCharadesTurn(room);
+  else startTriviaRound(room);
 }
 export function startDrawingTurn(room) {
   room.phase = "choose";
@@ -111,6 +194,65 @@ export function chooseWord(room, id, word) {
   room.word = word;
   room.phase = "drawing";
   room.deadline = Date.now() + room.seconds * 1000;
+}
+export function startCharadesTurn(room) {
+  room.phase = "choose";
+  room.guessed = [];
+  room.word = null;
+  room.messages = [];
+  room.drawer = room.players[room.turn % room.players.length].id;
+  room.round = Math.floor(room.turn / room.players.length);
+  room.choices = [...CHARADES_WORDS]
+    .sort(() => Math.random() - 0.5)
+    .slice(0, 3);
+  room.deadline = Date.now() + 20000;
+}
+export function chooseCharade(room, id, word) {
+  assert(
+    room.mode === "charades" && room.phase === "choose" && id === room.drawer,
+    "Wait for your charades turn.",
+  );
+  assert(room.choices.includes(word), "Choose one of the three prompts.");
+  room.word = word;
+  room.phase = "acting";
+  room.deadline = Date.now() + room.seconds * 1000;
+}
+export function startTriviaRound(room) {
+  if (!room.triviaOrder.length)
+    room.triviaOrder = [...TRIVIA_QUESTIONS]
+      .sort(() => Math.random() - 0.5)
+      .slice(0, 5);
+  room.phase = "question";
+  room.trivia = room.triviaOrder[room.round];
+  room.triviaAnswers = {};
+  room.deadline = Date.now() + 20000;
+}
+export function answerTrivia(room, id, choice, now = Date.now()) {
+  assert(
+    room.mode === "trivia" && room.phase === "question",
+    "Wait for the next question.",
+  );
+  assert(
+    room.players.some((p) => p.id === id),
+    "Join the room first.",
+  );
+  assert(!room.triviaAnswers[id], "You already locked in an answer.");
+  assert(now < room.deadline, "Time’s up! The answer is being revealed.");
+  assert(room.trivia.choices.includes(choice), "Choose one of the answers.");
+  room.triviaAnswers[id] = { choice, answeredAt: now };
+  if (room.players.every((p) => room.triviaAnswers[p.id])) revealTrivia(room);
+}
+export function revealTrivia(room, now = Date.now()) {
+  const startedAt = room.deadline - 20000;
+  for (const player of room.players) {
+    const response = room.triviaAnswers[player.id];
+    if (response?.choice === room.trivia.answer) {
+      const speed = Math.max(0, 1 - (response.answeredAt - startedAt) / 20000);
+      player.score += 100 + Math.round(speed * 200);
+    }
+  }
+  room.phase = "reveal";
+  room.deadline = now + 5000;
 }
 export function telephoneSubmit(room, id, value) {
   assert(
@@ -205,9 +347,10 @@ export function editCanvas(room, id, action) {
   }
 }
 export function guess(room, id, value, now = Date.now()) {
+  const guessingPhase = room.mode === "charades" ? "acting" : "drawing";
   assert(
-    room.phase === "drawing" && id !== room.drawer,
-    "Guess when someone else is drawing.",
+    room.phase === guessingPhase && id !== room.drawer,
+    `Guess when someone else is ${room.mode === "charades" ? "acting" : "drawing"}.`,
   );
   assert(!room.guessed.includes(id), "You already got it!");
   assert(now < room.deadline, "Time’s up! The next turn is coming.");
@@ -243,19 +386,42 @@ export function endTurn(room) {
 }
 export function tick(room, now = Date.now()) {
   if (!room.deadline || now < room.deadline) return false;
-  if (room.phase === "choose") chooseWord(room, room.drawer, room.choices[0]);
-  else if (room.phase === "drawing") endTurn(room);
+  if (room.phase === "choose")
+    room.mode === "charades"
+      ? chooseCharade(room, room.drawer, room.choices[0])
+      : chooseWord(room, room.drawer, room.choices[0]);
+  else if (["drawing", "acting"].includes(room.phase)) endTurn(room);
+  else if (room.phase === "question") revealTrivia(room, now);
   else if (room.phase === "reveal") {
+    if (room.mode === "trivia") {
+      room.round++;
+      if (room.round >= room.triviaOrder.length) {
+        room.phase = "results";
+        room.deadline = null;
+      } else startTriviaRound(room);
+      return true;
+    }
     room.turn++;
     if (room.turn >= room.rounds * room.players.length) {
       room.phase = "results";
       room.deadline = null;
-    } else startDrawingTurn(room);
+    } else if (room.mode === "charades") startCharadesTurn(room);
+    else startDrawingTurn(room);
   } else return false;
   return true;
 }
 export function viewFor(room, id) {
-  const { word, choices, chains, submissions, strokes, ...view } = room;
+  const {
+    word,
+    choices,
+    chains,
+    submissions,
+    strokes,
+    triviaAnswers,
+    triviaOrder,
+    trivia,
+    ...view
+  } = room;
   view.you = id;
   view.submitted = Object.keys(submissions);
   view.strokes =
@@ -271,13 +437,23 @@ export function viewFor(room, id) {
           ]?.entries.at(-1)
         : null;
     if (room.phase === "results") view.chains = chains;
-  } else {
+  } else if (room.mode === "scribble" || room.mode === "charades") {
     view.word =
       id === room.drawer || ["reveal", "results"].includes(room.phase)
         ? word
         : null;
     view.hint = word ? word.replace(/[^ ]/g, "_") : "";
     if (id === room.drawer && room.phase === "choose") view.choices = choices;
+  } else {
+    view.answered = Object.keys(triviaAnswers);
+    view.trivia = {
+      question: trivia?.question,
+      choices: trivia?.choices || [],
+      answer: ["reveal", "results"].includes(room.phase)
+        ? trivia?.answer
+        : undefined,
+      yourAnswer: triviaAnswers[id]?.choice,
+    };
   }
   return view;
 }
