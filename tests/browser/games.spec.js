@@ -50,15 +50,31 @@ test("landing page, game filters, rules, invalid room and mobile layout", async 
   page.on("pageerror", (err) => errors.push(err.message));
   await page.goto("/");
   await expect(page).toHaveTitle("Early Career Game Night");
-  await expect(page.locator(".game-card")).toHaveCount(2);
+  await expect(page.locator(".game-card")).toHaveCount(4);
+  await expect(
+    page
+      .locator(".game-card")
+      .filter({ hasText: "Gartic Phone" })
+      .getByRole("link", { name: "Play on Gartic Phone" }),
+  ).toHaveAttribute("href", "https://garticphone.com/");
+  await expect(
+    page
+      .locator(".game-card")
+      .filter({ hasText: "skribbl.io" })
+      .getByRole("link", { name: "Play on skribbl.io" }),
+  ).toHaveAttribute("href", "https://skribbl.io/");
   await page.screenshot({
     path: "test-results/home-desktop.png",
     fullPage: true,
   });
   await page.getByRole("button", { name: "Party games", exact: true }).click();
-  await expect(page.locator(".game-card")).toHaveCount(1);
-  await page.getByRole("button", { name: "All games", exact: true }).click();
   await expect(page.locator(".game-card")).toHaveCount(2);
+  await page
+    .getByRole("button", { name: "Drawing & guessing", exact: true })
+    .click();
+  await expect(page.locator(".game-card")).toHaveCount(2);
+  await page.getByRole("button", { name: "All games", exact: true }).click();
+  await expect(page.locator(".game-card")).toHaveCount(4);
   await page.getByRole("button", { name: "How to play" }).first().click();
   await expect(page.locator("dialog")).toContainText("Gather 3–8 players");
   await page.keyboard.press("Escape");

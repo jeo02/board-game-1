@@ -40,6 +40,7 @@ const GAMES = {
     tag: "A little chaotic",
     color: "purple",
     minimum: 3,
+    category: "Party games",
   },
   scribble: {
     name: "Scribble Club",
@@ -51,6 +52,37 @@ const GAMES = {
     tag: "Quick thinking",
     color: "orange",
     minimum: 2,
+    category: "Drawing & guessing",
+  },
+};
+const EXTERNAL_GAMES = {
+  "gartic-phone": {
+    name: "Gartic Phone",
+    label: "THE ORIGINAL PARTY CLASSIC",
+    description:
+      "Jump over to Gartic Phone for its full collection of drawing, writing, and animation modes.",
+    players: "4+ players",
+    time: "15–30 min",
+    tag: "External game",
+    color: "purple",
+    category: "Party games",
+    illustration: "telephone",
+    caption: "continue the chaos on the official site",
+    url: "https://garticphone.com/",
+  },
+  skribbl: {
+    name: "skribbl.io",
+    label: "DRAW. GUESS. REPEAT.",
+    description:
+      "Head to skribbl.io for classic real-time drawing and guessing in a private or public room.",
+    players: "2–20 players",
+    time: "10–30 min",
+    tag: "External game",
+    color: "orange",
+    category: "Drawing & guessing",
+    illustration: "scribble",
+    caption: "classic drawing and guessing, one click away",
+    url: "https://skribbl.io/",
   },
 };
 const PROMPTS = [
@@ -543,7 +575,7 @@ function App() {
                 </h2>
               </div>
               <span className="collection-count">
-                02 games · endless inside jokes
+                04 games · endless inside jokes
               </span>
             </div>
             <div className="filter-row">
@@ -563,29 +595,43 @@ function App() {
               </span>
             </div>
             <div className="game-grid">
-              {Object.entries(GAMES)
+              {[
+                ...Object.entries(GAMES).map(([key, info]) => ({
+                  key,
+                  info,
+                  external: false,
+                })),
+                ...Object.entries(EXTERNAL_GAMES).map(([key, info]) => ({
+                  key,
+                  info,
+                  external: true,
+                })),
+              ]
                 .filter(
-                  ([key]) => filter !== "Party games" || key === "telephone",
+                  ({ info }) =>
+                    filter === "All games" || info.category === filter,
                 )
-                .map(([key, info]) => (
+                .map(({ key, info, external }, index) => (
                   <article className={`game-card ${info.color}`} key={key}>
                     <div className="art-panel">
                       <div className="art-badges">
                         <span>
                           <span className="tiny-dot" />{" "}
-                          {key === "telephone"
-                            ? "THE ICEBREAKER"
-                            : "THE CROWD FAVORITE"}
+                          {external
+                            ? info.label
+                            : key === "telephone"
+                              ? "THE ICEBREAKER"
+                              : "THE CROWD FAVORITE"}
                         </span>
-                        <span className="number">
-                          0{key === "telephone" ? 1 : 2}
-                        </span>
+                        <span className="number">0{index + 1}</span>
                       </div>
-                      <Illustration kind={key} />
+                      <Illustration kind={info.illustration || key} />
                       <span className="art-caption">
-                        {key === "telephone"
-                          ? "a perfectly imperfect chain reaction"
-                          : "bad drawings make great memories"}
+                        {external
+                          ? info.caption
+                          : key === "telephone"
+                            ? "a perfectly imperfect chain reaction"
+                            : "bad drawings make great memories"}
                       </span>
                     </div>
                     <div className="card-body">
@@ -611,18 +657,31 @@ function App() {
                         </span>
                       </div>
                       <div className="card-actions">
-                        <button
-                          className="button dark"
-                          onClick={() => open("create", key)}
-                        >
-                          Create a room <ArrowRight size={17} />
-                        </button>
-                        <button
-                          className="text-button"
-                          onClick={() => open("rules", key)}
-                        >
-                          How to play <ArrowUpRight size={15} />
-                        </button>
+                        {external ? (
+                          <a
+                            className="button dark"
+                            href={info.url}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            Play on {info.name} <ArrowUpRight size={17} />
+                          </a>
+                        ) : (
+                          <>
+                            <button
+                              className="button dark"
+                              onClick={() => open("create", key)}
+                            >
+                              Create a room <ArrowRight size={17} />
+                            </button>
+                            <button
+                              className="text-button"
+                              onClick={() => open("rules", key)}
+                            >
+                              How to play <ArrowUpRight size={15} />
+                            </button>
+                          </>
+                        )}
                       </div>
                     </div>
                   </article>
