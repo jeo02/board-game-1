@@ -355,6 +355,12 @@ function App() {
       );
       setError("");
     };
+    const onStroke = (stroke) =>
+      setRoom((current) =>
+        current
+          ? { ...current, strokes: [...(current.strokes || []), stroke] }
+          : current,
+      );
     const onLeft = () => {
       setRoom(null);
       sessionStorage.removeItem("gameToken");
@@ -363,12 +369,14 @@ function App() {
     const onConnect = () => setConnected(true);
     const onDisconnect = () => setConnected(false);
     socket.on("room", onRoom);
+    socket.on("stroke", onStroke);
     socket.on("left", onLeft);
     socket.on("connect", onConnect);
     socket.on("disconnect", onDisconnect);
     if (code) setModal("join");
     return () => {
       socket.off("room", onRoom);
+      socket.off("stroke", onStroke);
       socket.off("left", onLeft);
       socket.off("connect", onConnect);
       socket.off("disconnect", onDisconnect);
@@ -1412,9 +1420,13 @@ function paint(ctx, stroke, width, height) {
     ctx.fill();
   } else ctx.stroke();
 }
+function paintLatestSegment(ctx, stroke, width, height) {
+  paint(ctx, { ...stroke, points: stroke.points.slice(-2) }, width, height);
+}
 function DrawingCanvas({ strokes = [], editable = false, onStroke, onEdit }) {
   const canvas = useRef(null);
   const current = useRef(null);
+  const renderedStrokes = useRef(null);
   const [color, setColor] = useState(COLORS[0]);
   const [width, setWidth] = useState(7);
   const redraw = () => {
@@ -1425,7 +1437,21 @@ function DrawingCanvas({ strokes = [], editable = false, onStroke, onEdit }) {
     strokes.forEach((s) => paint(ctx, s, 800, 440));
     if (current.current) paint(ctx, current.current, 800, 440);
   };
-  useEffect(redraw, [strokes]);
+  useEffect(() => {
+    const ctx = canvas.current?.getContext("2d");
+    if (!ctx) return;
+    const previous = renderedStrokes.current;
+    const appended =
+      previous &&
+      strokes.length >= previous.length &&
+      previous.every((stroke, index) => stroke === strokes[index]);
+    if (appended)
+      strokes
+        .slice(previous.length)
+        .forEach((stroke) => paint(ctx, stroke, 800, 440));
+    else redraw();
+    renderedStrokes.current = strokes;
+  }, [strokes]);
   const point = (e) => {
     const r = canvas.current.getBoundingClientRect();
     return [
@@ -1454,12 +1480,22 @@ function DrawingCanvas({ strokes = [], editable = false, onStroke, onEdit }) {
           e.preventDefault();
           canvas.current.setPointerCapture(e.pointerId);
           current.current = { color, width, points: [point(e)] };
-          redraw();
+          paintLatestSegment(
+            canvas.current.getContext("2d"),
+            current.current,
+            800,
+            440,
+          );
         }}
         onPointerMove={(e) => {
           if (current.current && editable) {
             current.current.points.push(point(e));
-            redraw();
+            paintLatestSegment(
+              canvas.current.getContext("2d"),
+              current.current,
+              800,
+              440,
+            );
             if (current.current.points.length >= 990) finish();
           }
         }}
