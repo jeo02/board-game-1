@@ -1,36 +1,97 @@
 import { randomBytes } from "node:crypto";
 
 export const WORDS = [
-  "telescope",
-  "pizza",
-  "rainbow",
+  "accordion",
+  "airplane",
+  "alarm clock",
+  "alien",
+  "avocado",
+  "backpack",
+  "birthday cake",
   "bicycle",
-  "penguin",
+  "bookstore",
+  "bowling",
+  "bubble bath",
+  "butterfly",
   "campfire",
   "cactus",
-  "umbrella",
-  "rocket",
-  "butterfly",
-  "snowman",
+  "castle",
+  "chef",
+  "chess",
+  "cloud",
+  "cowboy",
+  "cruise ship",
+  "detective",
+  "dinosaur",
+  "disco ball",
+  "dragon",
+  "drum set",
+  "fireworks",
+  "fishing",
+  "flamingo",
   "guitar",
-  "lighthouse",
-  "octopus",
+  "hamburger",
   "headphones",
-  "watermelon",
-  "skateboard",
-  "volcano",
-  "backpack",
-  "sunflower",
+  "hot air balloon",
+  "ice cream truck",
+  "jellyfish",
+  "kangaroo",
+  "lighthouse",
+  "magician",
+  "mermaid",
+  "microscope",
+  "mountain climber",
+  "octopus",
+  "pancakes",
+  "penguin",
+  "pirate ship",
+  "pizza",
+  "popcorn",
+  "rainbow",
   "robot",
+  "roller coaster",
   "sandcastle",
-  "airplane",
-  "birthday cake",
+  "satellite",
+  "scarecrow",
+  "skateboard",
+  "snowman",
+  "spaceship",
+  "submarine",
+  "sunflower",
+  "sushi",
+  "taco",
+  "telescope",
+  "treehouse",
+  "treasure map",
+  "trophy",
+  "umbrella",
+  "unicorn",
+  "volcano",
+  "watermelon",
+  "windmill",
+  "wizard",
+  "yeti",
+  "zebra",
+  "zip line",
 ];
 export const clean = (value, max = 100) =>
   typeof value === "string" ? value.trim().slice(0, max) : "";
 const assert = (condition, message) => {
   if (!condition) throw new Error(message);
 };
+const activePlayers = (room) => room.players.filter((p) => !p.spectating);
+const shuffle = (values) => {
+  const result = [...values];
+  for (let i = result.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [result[i], result[j]] = [result[j], result[i]];
+  }
+  return result;
+};
+function nextWordChoices(room) {
+  if (room.wordDeck.length < 3) room.wordDeck.push(...shuffle(WORDS));
+  return room.wordDeck.splice(0, 3);
+}
 export function createRoom(name, mode, rounds = 2, seconds = 60) {
   assert(["telephone", "scribble"].includes(mode), "Choose a game first.");
   return {
@@ -46,16 +107,13 @@ export function createRoom(name, mode, rounds = 2, seconds = 60) {
     chains: [],
     strokes: [],
     messages: [],
+    wordDeck: [],
     turn: 0,
     round: 0,
     updatedAt: Date.now(),
   };
 }
 export function addPlayer(room, id, name) {
-  assert(
-    room.phase === "lobby",
-    "This game has already started. Join the next one!",
-  );
   assert(room.players.length < 8, "This room is full (8 players).");
   const safeName = clean(name, 20);
   assert(safeName, "Enter your name to join.");
@@ -63,7 +121,13 @@ export function addPlayer(room, id, name) {
     !room.players.some((p) => p.name.toLowerCase() === safeName.toLowerCase()),
     "That name is already in the room. Try another.",
   );
-  room.players.push({ id, name: safeName, score: 0, connected: true });
+  room.players.push({
+    id,
+    name: safeName,
+    score: 0,
+    connected: true,
+    spectating: room.phase !== "lobby",
+  });
   room.host ??= id;
 }
 export function startGame(room, id) {
@@ -79,27 +143,33 @@ export function startGame(room, id) {
   );
   room.players.forEach((p) => {
     p.score = 0;
+    p.spectating = false;
   });
   room.round = 0;
   room.turn = 0;
   room.messages = [];
   room.submissions = {};
   room.strokes = [];
+  room.wordDeck = [];
   if (room.mode === "telephone") {
-    room.chains = room.players.map((p) => ({ owner: p.name, entries: [] }));
+    room.chains = activePlayers(room).map((p) => ({
+      owner: p.name,
+      entries: [],
+    }));
     room.phase = "prompt";
     room.deadline = null;
   } else startDrawingTurn(room);
 }
 export function startDrawingTurn(room) {
+  const players = activePlayers(room);
   room.phase = "choose";
   room.strokes = [];
   room.guessed = [];
   room.word = null;
   room.messages = [];
-  room.drawer = room.players[room.turn % room.players.length].id;
-  room.round = Math.floor(room.turn / room.players.length);
-  room.choices = [...WORDS].sort(() => Math.random() - 0.5).slice(0, 3);
+  room.drawer = players[room.turn % players.length].id;
+  room.round = Math.floor(room.turn / players.length);
+  room.choices = nextWordChoices(room);
   room.deadline = Date.now() + 20000;
 }
 export function chooseWord(room, id, word) {
@@ -118,8 +188,9 @@ export function telephoneSubmit(room, id, value) {
     "This round is not accepting submissions.",
   );
   assert(!room.submissions[id], "You already submitted this round.");
-  const index = room.players.findIndex((p) => p.id === id);
-  assert(index >= 0, "Join the room first.");
+  const players = activePlayers(room);
+  const index = players.findIndex((p) => p.id === id);
+  assert(index >= 0, "You’re watching this game. You’ll play in the next one.");
   let entry;
   if (room.phase === "draw") {
     assert(
@@ -129,23 +200,23 @@ export function telephoneSubmit(room, id, value) {
     entry = {
       type: "drawing",
       strokes: room.strokes.filter((s) => s.player === id),
-      author: room.players[index].name,
+      author: players[index].name,
     };
   } else {
     const content = clean(value, 160);
     assert(content, "Write something before passing it on.");
-    entry = { type: "text", text: content, author: room.players[index].name };
+    entry = { type: "text", text: content, author: players[index].name };
   }
   room.chains[
-    (index - room.round + room.players.length) % room.players.length
+    (index - room.round + players.length) % players.length
   ].entries.push(entry);
   room.submissions[id] = true;
-  if (room.players.every((p) => room.submissions[p.id])) {
+  if (players.every((p) => room.submissions[p.id])) {
     room.round++;
     room.submissions = {};
     room.strokes = [];
     room.phase =
-      room.round >= room.players.length
+      room.round >= players.length
         ? "results"
         : room.round % 2
           ? "draw"
@@ -153,14 +224,15 @@ export function telephoneSubmit(room, id, value) {
   }
 }
 export function addStroke(room, id, stroke) {
+  const player = room.players.find((p) => p.id === id);
+  assert(
+    player && !player.spectating,
+    "You’re watching this game. You’ll play in the next one.",
+  );
   assert(
     (room.phase === "draw" && !room.submissions[id]) ||
       (room.phase === "drawing" && room.drawer === id),
     "It is not your drawing turn.",
-  );
-  assert(
-    room.players.some((p) => p.id === id),
-    "Join the room first.",
   );
   assert(
     stroke &&
@@ -192,6 +264,11 @@ export function addStroke(room, id, stroke) {
   });
 }
 export function editCanvas(room, id, action) {
+  const player = room.players.find((p) => p.id === id);
+  assert(
+    player && !player.spectating,
+    "You’re watching this game. You’ll play in the next one.",
+  );
   assert(
     (room.phase === "draw" && !room.submissions[id]) ||
       (room.phase === "drawing" && room.drawer === id),
@@ -205,14 +282,15 @@ export function editCanvas(room, id, action) {
   }
 }
 export function guess(room, id, value, now = Date.now()) {
+  const players = activePlayers(room);
+  const player = players.find((p) => p.id === id);
+  assert(player, "You’re watching this game. You’ll play in the next one.");
   assert(
     room.phase === "drawing" && id !== room.drawer,
     "Guess when someone else is drawing.",
   );
   assert(!room.guessed.includes(id), "You already got it!");
   assert(now < room.deadline, "Time’s up! The next turn is coming.");
-  const player = room.players.find((p) => p.id === id);
-  assert(player, "Join the room first.");
   const content = clean(value, 80);
   assert(content, "Type a guess first.");
   if (
@@ -225,14 +303,14 @@ export function guess(room, id, value, now = Date.now()) {
         (Math.max(0, room.deadline - now) / (room.seconds * 1000)) * 400,
       );
     player.score += points;
-    room.players.find((p) => p.id === room.drawer).score += 100;
+    players.find((p) => p.id === room.drawer).score += 100;
     room.guessed.push(id);
     room.messages.push({
       name: player.name,
       text: `guessed the word! +${points}`,
       correct: true,
     });
-    if (room.guessed.length === room.players.length - 1) endTurn(room);
+    if (room.guessed.length === players.length - 1) endTurn(room);
   } else
     room.messages.push({ name: player.name, text: content, correct: false });
   room.messages = room.messages.slice(-60);
@@ -246,8 +324,9 @@ export function tick(room, now = Date.now()) {
   if (room.phase === "choose") chooseWord(room, room.drawer, room.choices[0]);
   else if (room.phase === "drawing") endTurn(room);
   else if (room.phase === "reveal") {
+    const players = activePlayers(room);
     room.turn++;
-    if (room.turn >= room.rounds * room.players.length) {
+    if (room.turn >= room.rounds * players.length) {
       room.phase = "results";
       room.deadline = null;
     } else startDrawingTurn(room);
@@ -255,19 +334,22 @@ export function tick(room, now = Date.now()) {
   return true;
 }
 export function viewFor(room, id) {
-  const { word, choices, chains, submissions, strokes, ...view } = room;
+  const { word, choices, chains, submissions, strokes, wordDeck, ...view } =
+    room;
   view.you = id;
+  view.activePlayerCount = activePlayers(room).length;
   view.submitted = Object.keys(submissions);
   view.strokes =
     room.mode === "telephone"
       ? strokes.filter((s) => s.player === id)
       : strokes;
   if (room.mode === "telephone") {
-    const index = room.players.findIndex((p) => p.id === id);
+    const players = activePlayers(room);
+    const index = players.findIndex((p) => p.id === id);
     view.previous =
-      room.round > 0
+      room.round > 0 && index >= 0
         ? chains[
-            (index - room.round + room.players.length) % room.players.length
+            (index - room.round + players.length) % players.length
           ]?.entries.at(-1)
         : null;
     if (room.phase === "results") view.chains = chains;

@@ -41,6 +41,7 @@ function broadcast(room) {
 function leave(socket) {
   const room = rooms.get(socket.data.code);
   if (!room) return;
+  const leavingPlayer = room.players.find((p) => p.id === socket.data.playerId);
   room.players = room.players.filter((p) => p.id !== socket.data.playerId);
   sessions.delete(socket.data.token);
   socket.data = {};
@@ -48,9 +49,15 @@ function leave(socket) {
   if (!room.players.length) return void rooms.delete(room.code);
   if (!room.players.some((p) => p.id === room.host))
     room.host = room.players[0].id;
-  if (!["lobby", "results"].includes(room.phase)) {
+  if (
+    !leavingPlayer?.spectating &&
+    !["lobby", "results"].includes(room.phase)
+  ) {
     room.phase = "lobby";
     room.deadline = null;
+    room.players.forEach((p) => {
+      p.spectating = false;
+    });
     room.notice = "A player left. Gather your crew and start a fresh game.";
   }
   broadcast(room);
@@ -124,6 +131,9 @@ io.on("connection", (socket) => {
         room.phase = "lobby";
         room.deadline = null;
         room.notice = "";
+        room.players.forEach((p) => {
+          p.spectating = false;
+        });
       } else throw new Error("Unknown action.");
       ack({ ok: true });
       broadcast(room);
