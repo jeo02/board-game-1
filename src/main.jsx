@@ -27,6 +27,7 @@ import {
   X,
 } from "lucide-react";
 import "./styles.css";
+import { plugins } from "./games/index.js";
 
 const socket = io({ auth: { token: sessionStorage.getItem("gameToken") } });
 const GAMES = {
@@ -52,6 +53,7 @@ const GAMES = {
     color: "orange",
     minimum: 2,
   },
+  ...plugins,
 };
 const PROMPTS = [
   "A penguin presenting a very important spreadsheet",
@@ -543,12 +545,18 @@ function App() {
                 </h2>
               </div>
               <span className="collection-count">
-                02 games · endless inside jokes
+                {String(Object.keys(GAMES).length).padStart(2, "0")} games ·
+                endless inside jokes
               </span>
             </div>
             <div className="filter-row">
               <div className="filters" aria-label="Filter games">
-                {["All games", "Drawing & guessing", "Party games"].map((f) => (
+                {[
+                  "All games",
+                  "Drawing & guessing",
+                  "Party games",
+                  "Arcade games",
+                ].map((f) => (
                   <button
                     key={f}
                     className={filter === f ? "selected" : ""}
@@ -565,7 +573,11 @@ function App() {
             <div className="game-grid">
               {Object.entries(GAMES)
                 .filter(
-                  ([key]) => filter !== "Party games" || key === "telephone",
+                  ([key]) =>
+                    filter === "All games" ||
+                    (filter === "Party games" && key === "telephone") ||
+                    (filter === "Drawing & guessing" && !plugins[key]) ||
+                    (filter === "Arcade games" && !!plugins[key]),
                 )
                 .map(([key, info]) => (
                   <article className={`game-card ${info.color}`} key={key}>
@@ -573,19 +585,28 @@ function App() {
                       <div className="art-badges">
                         <span>
                           <span className="tiny-dot" />{" "}
-                          {key === "telephone"
-                            ? "THE ICEBREAKER"
-                            : "THE CROWD FAVORITE"}
+                          {info.label ||
+                            (key === "telephone"
+                              ? "THE ICEBREAKER"
+                              : "THE CROWD FAVORITE")}
                         </span>
                         <span className="number">
-                          0{key === "telephone" ? 1 : 2}
+                          {String(Object.keys(GAMES).indexOf(key) + 1).padStart(
+                            2,
+                            "0",
+                          )}
                         </span>
                       </div>
-                      <Illustration kind={key} />
+                      {info.Illustration ? (
+                        <info.Illustration />
+                      ) : (
+                        <Illustration kind={key} />
+                      )}
                       <span className="art-caption">
-                        {key === "telephone"
-                          ? "a perfectly imperfect chain reaction"
-                          : "bad drawings make great memories"}
+                        {info.caption ||
+                          (key === "telephone"
+                            ? "a perfectly imperfect chain reaction"
+                            : "bad drawings make great memories")}
                       </span>
                     </div>
                     <div className="card-body">
@@ -606,8 +627,12 @@ function App() {
                           {info.time}
                         </span>
                         <span>
-                          <Pencil size={14} />
-                          Drawing
+                          {plugins[key] ? (
+                            <Sparkles size={14} />
+                          ) : (
+                            <Pencil size={14} />
+                          )}
+                          {plugins[key] ? "Arcade" : "Drawing"}
                         </span>
                       </div>
                       <div className="card-actions">
@@ -779,7 +804,9 @@ function App() {
                           className={game === key ? "selected" : ""}
                           onClick={() => setGame(key)}
                         >
-                          {key === "telephone" ? (
+                          {info.Icon ? (
+                            <info.Icon size={20} />
+                          ) : key === "telephone" ? (
                             <MessageCircle size={20} />
                           ) : (
                             <Pencil size={20} />
@@ -820,6 +847,18 @@ function App() {
                         </select>
                       </label>
                     </div>
+                  )}
+                  {plugins[game]?.seconds && (
+                    <label>
+                      Match length
+                      <select name="seconds" defaultValue="90">
+                        {plugins[game].seconds.map((seconds) => (
+                          <option key={seconds} value={seconds}>
+                            {seconds} seconds
+                          </option>
+                        ))}
+                      </select>
+                    </label>
                   )}
                 </>
               )}
@@ -884,17 +923,18 @@ function App() {
               </p>
               <ol className="rules-list">
                 {(modal === "rules"
-                  ? game === "telephone"
-                    ? [
-                        "Gather 3–8 players. Everyone starts by writing a funny sentence.",
-                        "Draw the sentence you receive, then describe the drawing passed to you. Keep the previous turn a secret!",
-                        "Once every story has made the rounds, reveal the entire chain together. No points. Just plot twists.",
-                      ]
-                    : [
-                        "Gather 2–8 players and choose your number of rounds and drawing time.",
-                        "Take turns picking a secret word and drawing it. Everyone else types their guesses before time runs out.",
-                        "Faster guesses earn more points. Artists get points for each correct guess. The highest score wins!",
-                      ]
+                  ? plugins[game]?.rules ||
+                    (game === "telephone"
+                      ? [
+                          "Gather 3–8 players. Everyone starts by writing a funny sentence.",
+                          "Draw the sentence you receive, then describe the drawing passed to you. Keep the previous turn a secret!",
+                          "Once every story has made the rounds, reveal the entire chain together. No points. Just plot twists.",
+                        ]
+                      : [
+                          "Gather 2–8 players and choose your number of rounds and drawing time.",
+                          "Take turns picking a secret word and drawing it. Everyone else types their guesses before time runs out.",
+                          "Faster guesses earn more points. Artists get points for each correct guess. The highest score wins!",
+                        ])
                   : [
                       "Create a room, pick a game, and share the six-character code with your friends.",
                       "Join on separate devices or browsers. Keep a call open if you’re playing remotely.",
@@ -972,7 +1012,11 @@ function Room({ room, act, open, copy }) {
       {room.phase === "lobby" ? (
         <div className="lobby-grid">
           <section className={`lobby-feature ${info.color}`}>
-            <Illustration kind={room.mode} />
+            {info.Illustration ? (
+              <info.Illustration />
+            ) : (
+              <Illustration kind={room.mode} />
+            )}
             <div className="eyebrow">THE CREW’S COMING TOGETHER</div>
             <h2>Pull up a chair.</h2>
             <p>{info.description}</p>
@@ -983,9 +1027,11 @@ function Room({ room, act, open, copy }) {
               </span>
               <span>
                 <Clock3 size={16} />
-                {room.mode === "scribble"
-                  ? `${room.rounds} rounds · ${room.seconds}s turns`
-                  : "Everyone writes, draws & guesses"}
+                {plugins[room.mode]
+                  ? `${room.seconds}s match`
+                  : room.mode === "scribble"
+                    ? `${room.rounds} rounds · ${room.seconds}s turns`
+                    : "Everyone writes, draws & guesses"}
               </span>
             </div>
             <button
@@ -1001,6 +1047,11 @@ function Room({ room, act, open, copy }) {
               <span>{room.players.length}/8</span>
             </div>
             <PlayerList room={room} />
+            {plugins[room.mode]?.ColorPicker &&
+              React.createElement(plugins[room.mode].ColorPicker, {
+                room,
+                act,
+              })}
             <button
               className="invite-button"
               onClick={() => copy(`${location.origin}/?room=${room.code}`)}
@@ -1034,32 +1085,40 @@ function Room({ room, act, open, copy }) {
       ) : room.phase === "results" ? (
         <Results room={room} act={act} />
       ) : (
-        <div className="play-grid">
+        <div className={`play-grid ${plugins[room.mode] ? "plugin-play" : ""}`}>
           <section className="play-panel">
-            {room.mode === "telephone" ? (
+            {plugins[room.mode] ? (
+              React.createElement(plugins[room.mode].Play, {
+                room,
+                act,
+                socket,
+              })
+            ) : room.mode === "telephone" ? (
               <Telephone room={room} act={act} />
             ) : (
               <Scribble room={room} act={act} />
             )}
           </section>
-          <aside className="players-panel in-game">
-            <div className="panel-title">
-              <h3>{room.mode === "telephone" ? "The crew" : "Scoreboard"}</h3>
-              <Users size={18} />
-            </div>
-            <PlayerList room={room} scores={room.mode === "scribble"} />
-            {room.mode === "telephone" ? (
-              <div className="friendly-note">
-                <Sparkles size={20} />
-                <span>
-                  A little mystery makes a great reveal. Keep your work to
-                  yourself!
-                </span>
+          {!plugins[room.mode] && (
+            <aside className="players-panel in-game">
+              <div className="panel-title">
+                <h3>{room.mode === "telephone" ? "The crew" : "Scoreboard"}</h3>
+                <Users size={18} />
               </div>
-            ) : (
-              <GuessBox room={room} act={act} />
-            )}
-          </aside>
+              <PlayerList room={room} scores={room.mode === "scribble"} />
+              {room.mode === "telephone" ? (
+                <div className="friendly-note">
+                  <Sparkles size={20} />
+                  <span>
+                    A little mystery makes a great reveal. Keep your work to
+                    yourself!
+                  </span>
+                </div>
+              ) : (
+                <GuessBox room={room} act={act} />
+              )}
+            </aside>
+          )}
         </div>
       )}
     </main>
@@ -1547,13 +1606,17 @@ function Results({ room, act }) {
           {room.mode === "telephone"
             ? "Well, that took a turn."
             : winners.length > 1
-              ? "Great minds draw alike. It’s a tie!"
+              ? room.mode === "scribble"
+                ? "Great minds draw alike. It’s a tie!"
+                : "It’s a tie! Well played."
               : `${winner.name} takes the crown!`}
         </h2>
         <p>
           {room.mode === "telephone"
             ? "From innocent sentence to beautiful nonsense. Explore every story below."
-            : "A round of applause for the art, the guesses, and the glorious chaos."}
+            : room.mode === "slither"
+              ? "A round of applause for the snacks, the slithers, and the close calls."
+              : "A round of applause for the art, the guesses, and the glorious chaos."}
         </p>
       </div>
       {room.mode === "telephone" ? (

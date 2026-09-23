@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { games } from "./games/index.js";
 
 export const WORDS = [
   "telescope",
@@ -32,7 +33,11 @@ const assert = (condition, message) => {
   if (!condition) throw new Error(message);
 };
 export function createRoom(name, mode, rounds = 2, seconds = 60) {
-  assert(["telephone", "scribble"].includes(mode), "Choose a game first.");
+  assert(
+    ["telephone", "scribble"].includes(mode) || games.has(mode),
+    "Choose a game first.",
+  );
+  const plugin = games.get(mode);
   return {
     code: randomBytes(3).toString("hex").toUpperCase(),
     mode,
@@ -40,7 +45,13 @@ export function createRoom(name, mode, rounds = 2, seconds = 60) {
     players: [],
     phase: "lobby",
     rounds: [1, 2, 3].includes(rounds) ? rounds : 2,
-    seconds: [30, 60, 90].includes(seconds) ? seconds : 60,
+    seconds: plugin
+      ? plugin.seconds?.includes(seconds)
+        ? seconds
+        : plugin.seconds?.[0] || 90
+      : [30, 60, 90].includes(seconds)
+        ? seconds
+        : 60,
     title: clean(name, 40) || "The game night crew",
     submissions: {},
     chains: [],
@@ -56,7 +67,11 @@ export function addPlayer(room, id, name) {
     room.phase === "lobby",
     "This game has already started. Join the next one!",
   );
-  assert(room.players.length < 8, "This room is full (8 players).");
+  const maximum = games.get(room.mode)?.maximum || 8;
+  assert(
+    room.players.length < maximum,
+    `This room is full (${maximum} players).`,
+  );
   const safeName = clean(name, 20);
   assert(safeName, "Enter your name to join.");
   assert(
@@ -64,6 +79,7 @@ export function addPlayer(room, id, name) {
     "That name is already in the room. Try another.",
   );
   room.players.push({ id, name: safeName, score: 0, connected: true });
+  games.get(room.mode)?.onJoin?.(room, room.players.at(-1));
   room.host ??= id;
 }
 export function startGame(room, id) {
@@ -72,7 +88,8 @@ export function startGame(room, id) {
     ["lobby", "results"].includes(room.phase),
     "A game is already in progress.",
   );
-  const minimum = room.mode === "telephone" ? 3 : 2;
+  const minimum =
+    games.get(room.mode)?.minimum || (room.mode === "telephone" ? 3 : 2);
   assert(
     room.players.length >= minimum && room.players.every((p) => p.connected),
     `Gather at least ${minimum} connected players to start.`,
@@ -85,7 +102,8 @@ export function startGame(room, id) {
   room.messages = [];
   room.submissions = {};
   room.strokes = [];
-  if (room.mode === "telephone") {
+  if (games.has(room.mode)) games.get(room.mode).start(room);
+  else if (room.mode === "telephone") {
     room.chains = room.players.map((p) => ({ owner: p.name, entries: [] }));
     room.phase = "prompt";
     room.deadline = null;
@@ -242,6 +260,7 @@ export function endTurn(room) {
   room.deadline = Date.now() + 6000;
 }
 export function tick(room, now = Date.now()) {
+  if (games.has(room.mode)) return games.get(room.mode).tick(room, now);
   if (!room.deadline || now < room.deadline) return false;
   if (room.phase === "choose") chooseWord(room, room.drawer, room.choices[0]);
   else if (room.phase === "drawing") endTurn(room);
@@ -255,13 +274,14 @@ export function tick(room, now = Date.now()) {
   return true;
 }
 export function viewFor(room, id) {
-  const { word, choices, chains, submissions, strokes, ...view } = room;
+  const { word, choices, chains, submissions, strokes, arena, ...view } = room;
   view.you = id;
   view.submitted = Object.keys(submissions);
   view.strokes =
     room.mode === "telephone"
       ? strokes.filter((s) => s.player === id)
       : strokes;
+  if (games.has(room.mode)) return view;
   if (room.mode === "telephone") {
     const index = room.players.findIndex((p) => p.id === id);
     view.previous =

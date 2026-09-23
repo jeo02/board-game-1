@@ -25,7 +25,9 @@ async function create(page, game, name = "Alex") {
 async function join(browser, code, name) {
   const context = await browser.newContext();
   const page = await context.newPage();
-  await page.goto(new URL(`/?room=${code}`, test.info().project.use.baseURL).href);
+  await page.goto(
+    new URL(`/?room=${code}`, test.info().project.use.baseURL).href,
+  );
   await page.getByLabel("Your name").fill(name);
   await page.getByRole("button", { name: "Join room", exact: true }).click();
   await expect(
@@ -50,7 +52,7 @@ test("landing page, game filters, rules, invalid room and mobile layout", async 
   page.on("pageerror", (err) => errors.push(err.message));
   await page.goto("/");
   await expect(page).toHaveTitle("Early Career Game Night");
-  await expect(page.locator(".game-card")).toHaveCount(2);
+  await expect(page.locator(".game-card")).toHaveCount(3);
   await page.screenshot({
     path: "test-results/home-desktop.png",
     fullPage: true,
@@ -58,7 +60,7 @@ test("landing page, game filters, rules, invalid room and mobile layout", async 
   await page.getByRole("button", { name: "Party games", exact: true }).click();
   await expect(page.locator(".game-card")).toHaveCount(1);
   await page.getByRole("button", { name: "All games", exact: true }).click();
-  await expect(page.locator(".game-card")).toHaveCount(2);
+  await expect(page.locator(".game-card")).toHaveCount(3);
   await page.getByRole("button", { name: "How to play" }).first().click();
   await expect(page.locator("dialog")).toContainText("Gather 3–8 players");
   await page.keyboard.press("Escape");
@@ -203,5 +205,30 @@ test("scribble synchronizes drawing, hides words, scores guesses, and finishes",
   await expect(
     guest.getByRole("heading", { name: "Pull up a chair." }),
   ).toBeVisible();
+  await guest.context().close();
+});
+test("snake lobby color, live arena and leaderboard work for two players", async ({
+  page,
+  browser,
+}) => {
+  const code = await create(page, "Snake Sprint");
+  const guest = await join(browser, code, "Jamie");
+  await page.getByRole("button", { name: "Snake color #62b9ad" }).click();
+  await expect(
+    page.getByRole("button", { name: "Snake color #62b9ad" }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "Start game" }).click();
+  await expect(page.getByRole("img", { name: "Snake arena" })).toBeVisible();
+  await expect(guest.getByRole("img", { name: "Snake arena" })).toBeVisible();
+  await expect(page.getByLabel("Live leaderboard")).toContainText("Jamie");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.locator("body")).toHaveJSProperty("scrollWidth", 390);
+  await page.keyboard.press("ArrowRight");
+  await expect(page.getByRole("timer")).toContainText("s");
+  const crash = page.getByRole("dialog", { name: "Snake crashed" });
+  await expect(crash).toBeVisible({ timeout: 15000 });
+  await expect(crash).toContainText("Your points are safe");
+  await crash.getByRole("button", { name: "Respawn", exact: true }).click();
+  await expect(crash).not.toBeVisible();
   await guest.context().close();
 });

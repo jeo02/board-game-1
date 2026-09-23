@@ -13,6 +13,7 @@ Open **http://localhost:5173**. Create a room and share its code or invite link.
 
 - **Cosmic Telephone:** 3–8 players write prompts, draw the previous player's sentence, and describe drawings. All players submit each step before the next begins. The full story chains are revealed at the end.
 - **Scribble Club:** 2–8 players take turns selecting a secret word and drawing while everyone else guesses. Includes 1–3 rounds, 30/60/90 second turns, automatic timeout progression, speed-based points, and a final scoreboard.
+- **Snake Sprint:** 2–8 players steer snakes with mouse, touch, or arrow/WASD keys in a 60/90/120-second arena. Choose a color in the lobby, eat food to grow and score, and avoid walls and bodies. After a collision, a popup lets you respawn after a short pause without losing your points. A live leaderboard tracks points.
 - Both games include private room codes, host controls, invite links, an 8-color canvas, brush sizes, eraser, undo, and clear. Refreshing or briefly losing connection restores your player session. Leaving mid-game returns everyone to the lobby.
 
 For friends on the same network, use this computer's LAN IP in place of localhost. The host must be reachable and Windows Firewall must allow the server. For internet play, see [Hosting](#hosting) below and share the public URL.
@@ -85,3 +86,9 @@ Remove-Item Env:PLAYWRIGHT_BASE_URL
 Setting `PLAYWRIGHT_BASE_URL` uses that server without starting the development server.
 
 The game names, illustrations, and interface are original, inspired by drawing telephone and drawing-and-guessing party game formats.
+
+## Adding a trusted game module
+
+Game modules are **repository code deployed by the site owner**, not player uploads or sandboxed third-party scripts. Add a matching `server/games/<id>.js` and `src/games/<id>.jsx`; both registries discover modules automatically at build/startup. The shared room creation, join, reconnect, host controls, replay, and results UI are reused without editing the core game list.
+
+The server module default export provides `id`, `minimum`, `maximum`, optional `seconds`, `fastActions` (high-frequency action names) and `onJoin(room, player)`, and `start(room)`, `action(room, playerId, action, payload)`, `tick(room, now)`, and `view(room)` functions. `action` returns true when the lobby/room view should be broadcast. Keep authoritative state on the server, validate every client action, and omit private or heavy state from the shared `viewFor` room payload. The server runs live plugin ticks every 50 ms and emits volatile `arena` snapshots every 100 ms while `phase === "arena"`; finish by changing phase to `results` and clearing the deadline. The browser module exports metadata (`id`, `name`, `description`, `players`, `time`, `tag`, `color`, `minimum`, `rules`) plus `Play({room, act, socket})`, and optionally `ColorPicker({room, act})`, `Illustration`, `Icon`, `seconds`, `label`, and `caption`. See the Snake Sprint modules for an example. Live games should render snapshots on canvas rather than putting each frame into React room state.

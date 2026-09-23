@@ -437,6 +437,9 @@ button:not(:disabled):active,
 .orange .art-panel {
   background: #fae5cf;
 }
+.green .art-panel {
+  background: #dcebd7;
+}
 .art-badges {
   position: absolute;
   top: 18px;
@@ -529,6 +532,10 @@ button:not(:disabled):active,
 .game-tag.orange {
   background: #fbecd8;
   color: #ae8154;
+}
+.game-tag.green {
+  background: #e0efdb;
+  color: #487456;
 }
 .card-body > p {
   font-size: 12px;
@@ -951,6 +958,9 @@ select {
   grid-template-columns: minmax(0, 1fr) 340px;
   gap: 24px;
 }
+.play-grid.plugin-play {
+  grid-template-columns: minmax(0, 1fr);
+}
 .lobby-feature {
   border: 1px solid #ddd3e8;
   background: #eee6f6;
@@ -962,6 +972,10 @@ select {
 .lobby-feature.orange {
   background: #faead9;
   border-color: #edd6bd;
+}
+.lobby-feature.green {
+  background: #e5f0df;
+  border-color: #c8ddc0;
 }
 .lobby-feature .game-art {
   height: 250px;
@@ -988,6 +1002,116 @@ select {
 .lobby-feature .game-meta {
   justify-content: center;
   margin: 22px 0;
+}
+.snake-colors {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 16px 0 0;
+  padding: 16px 0 0;
+}
+.snake-colors legend {
+  font-size: 12px;
+  font-weight: 650;
+  padding: 0 6px;
+}
+.snake-colors div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 10px;
+}
+.snake-colors button {
+  height: 32px;
+  width: 32px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 1px #aaa;
+}
+.snake-colors button.chosen {
+  box-shadow: 0 0 0 3px #302c41;
+}
+.snake-game {
+  min-width: 0;
+}
+.snake-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.snake-header h2 {
+  margin: 0;
+}
+.snake-header p,
+.snake-hint {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.snake-header [role="timer"] {
+  background: #e0efdb;
+  padding: 10px;
+  border-radius: 8px;
+  white-space: nowrap;
+}
+.snake-arena {
+  position: relative;
+}
+.snake-game canvas {
+  display: block;
+  width: 100%;
+  height: min(60vh, 520px);
+  min-height: 300px;
+  border: 1px solid #c8ddc0;
+  border-radius: 10px;
+  touch-action: none;
+}
+.snake-death {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 12px;
+  padding: 20px;
+  border-radius: 10px;
+  background: #f0f5eddf;
+}
+.snake-death h3 {
+  margin: 0;
+  font:
+    750 24px "Manrope",
+    sans-serif;
+}
+.snake-death p {
+  margin: 0 0 8px;
+  font-size: 13px;
+}
+.snake-leaderboard {
+  margin-top: 22px;
+}
+.snake-leaderboard h3 {
+  margin: 0 0 10px;
+}
+.snake-leaderboard ol {
+  padding-left: 25px;
+}
+.snake-leaderboard li {
+  padding: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.snake-leaderboard li strong {
+  float: right;
+}
+.snake-swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  margin-right: 9px;
 }
 .players-panel {
   background: #fffefa;
