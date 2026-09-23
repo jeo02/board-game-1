@@ -25,7 +25,9 @@ async function create(page, game, name = "Alex") {
 async function join(browser, code, name) {
   const context = await browser.newContext();
   const page = await context.newPage();
-  await page.goto(new URL(`/?room=${code}`, test.info().project.use.baseURL).href);
+  await page.goto(
+    new URL(`/?room=${code}`, test.info().project.use.baseURL).href,
+  );
   await page.getByLabel("Your name").fill(name);
   await page.getByRole("button", { name: "Join room", exact: true }).click();
   await expect(
@@ -43,6 +45,17 @@ async function draw(page) {
   await page.mouse.move(box.x + 180, box.y + 140, { steps: 10 });
   await page.mouse.up();
 }
+async function canvasHasInk(page) {
+  return page
+    .locator("canvas")
+    .evaluate((canvas) =>
+      [
+        ...canvas
+          .getContext("2d")
+          .getImageData(0, 0, canvas.width, canvas.height).data,
+      ].some((value, index) => index % 4 !== 3 && value < 240),
+    );
+}
 test("landing page, game filters, rules, invalid room and mobile layout", async ({
   page,
 }) => {
@@ -50,15 +63,31 @@ test("landing page, game filters, rules, invalid room and mobile layout", async 
   page.on("pageerror", (err) => errors.push(err.message));
   await page.goto("/");
   await expect(page).toHaveTitle("Early Career Game Night");
-  await expect(page.locator(".game-card")).toHaveCount(2);
+  await expect(page.locator(".game-card")).toHaveCount(4);
+  await expect(
+    page
+      .locator(".game-card")
+      .filter({ hasText: "Gartic Phone" })
+      .getByRole("link", { name: "Play on Gartic Phone" }),
+  ).toHaveAttribute("href", "https://garticphone.com/");
+  await expect(
+    page
+      .locator(".game-card")
+      .filter({ hasText: "skribbl.io" })
+      .getByRole("link", { name: "Play on skribbl.io" }),
+  ).toHaveAttribute("href", "https://skribbl.io/");
   await page.screenshot({
     path: "test-results/home-desktop.png",
     fullPage: true,
   });
   await page.getByRole("button", { name: "Party games", exact: true }).click();
-  await expect(page.locator(".game-card")).toHaveCount(1);
-  await page.getByRole("button", { name: "All games", exact: true }).click();
   await expect(page.locator(".game-card")).toHaveCount(2);
+  await page
+    .getByRole("button", { name: "Drawing & guessing", exact: true })
+    .click();
+  await expect(page.locator(".game-card")).toHaveCount(2);
+  await page.getByRole("button", { name: "All games", exact: true }).click();
+  await expect(page.locator(".game-card")).toHaveCount(4);
   await page.getByRole("button", { name: "How to play" }).first().click();
   await expect(page.locator("dialog")).toContainText("Gather 3–8 players");
   await page.keyboard.press("Escape");
@@ -99,8 +128,9 @@ test("three people complete a telephone game, see correct chains, and replay", a
     await p.getByRole("button", { name: "Pass it on" }).click();
   }
   await expect(bob.locator("blockquote")).toHaveText("A space cat number 0");
-  for (const p of players) {
+  for (const [index, p] of players.entries()) {
     await draw(p);
+    if (index === 0) await expect.poll(() => canvasHasInk(bob)).toBe(false);
     await p.getByRole("button", { name: "Pass it on" }).click();
   }
   for (const [i, p] of players.entries()) {
@@ -152,15 +182,7 @@ test("scribble synchronizes drawing, hides words, scores guesses, and finishes",
   await expect(guest.locator(".secret-word")).not.toHaveText(word);
   await draw(page);
   const canvas = guest.locator("canvas");
-  await expect
-    .poll(() =>
-      canvas.evaluate((c) =>
-        [...c.getContext("2d").getImageData(0, 0, c.width, c.height).data].some(
-          (n, i) => i % 4 !== 3 && n < 240,
-        ),
-      ),
-    )
-    .toBe(true);
+  await expect.poll(() => canvasHasInk(guest)).toBe(true);
   await page.getByRole("button", { name: "Undo last stroke" }).click();
   await expect
     .poll(() =>

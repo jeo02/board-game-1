@@ -184,12 +184,14 @@ export function addStroke(room, id, stroke) {
     room.strokes.filter((s) => s.player === id).length < 1500,
     "Canvas is full. Clear or undo to keep drawing.",
   );
-  room.strokes.push({
+  const added = {
     color: stroke.color,
     width: stroke.width,
     points: stroke.points,
     player: id,
-  });
+  };
+  room.strokes.push(added);
+  return added;
 }
 export function editCanvas(room, id, action) {
   assert(
