@@ -25,7 +25,9 @@ async function create(page, game, name = "Alex") {
 async function join(browser, code, name) {
   const context = await browser.newContext();
   const page = await context.newPage();
-  await page.goto(new URL(`/?room=${code}`, test.info().project.use.baseURL).href);
+  await page.goto(
+    new URL(`/?room=${code}`, test.info().project.use.baseURL).href,
+  );
   await page.getByLabel("Your name").fill(name);
   await page.getByRole("button", { name: "Join room", exact: true }).click();
   await expect(
@@ -94,6 +96,21 @@ test("three people complete a telephone game, see correct chains, and replay", a
   await page.reload();
   await expect(page.getByRole("button", { name: "Start game" })).toBeEnabled();
   await page.getByRole("button", { name: "Start game" }).click();
+  const lateContext = await browser.newContext();
+  const late = await lateContext.newPage();
+  await late.goto(
+    new URL(`/?room=${code}`, test.info().project.use.baseURL).href,
+  );
+  await late.getByLabel("Your name").fill("Dana");
+  await late.getByRole("button", { name: "Join room", exact: true }).click();
+  await expect(
+    late.getByRole("heading", {
+      name: "Catch this round from the sidelines.",
+    }),
+  ).toBeVisible();
+  await expect(page.locator(".player-list")).toContainText(
+    "Watching this game",
+  );
   for (const [i, p] of players.entries()) {
     await p.getByLabel("Your opening sentence").fill(`A space cat number ${i}`);
     await p.getByRole("button", { name: "Pass it on" }).click();
@@ -127,6 +144,7 @@ test("three people complete a telephone game, see correct chains, and replay", a
   );
   await page.getByRole("button", { name: "One more game" }).click();
   await expect(page.getByLabel("Your opening sentence")).toBeVisible();
+  await expect(late.getByLabel("Your opening sentence")).toBeVisible();
   await cam.getByRole("button", { name: "Leave", exact: true }).click();
   await cam.getByRole("button", { name: "Leave room", exact: true }).click();
   await expect(
@@ -136,6 +154,7 @@ test("three people complete a telephone game, see correct chains, and replay", a
   expect(errors).toEqual([]);
   await bob.context().close();
   await cam.context().close();
+  await lateContext.close();
 });
 test("scribble synchronizes drawing, hides words, scores guesses, and finishes", async ({
   page,

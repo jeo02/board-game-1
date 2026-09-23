@@ -60,7 +60,41 @@ const PROMPTS = [
   "A dinosaur trying to use a tiny laptop",
   "A cactus having a really good hair day",
   "A rocket powered entirely by coffee",
+  "A ghost trying to return a library book",
+  "A dragon working at an ice cream shop",
+  "A squirrel directing rush-hour traffic",
+  "A pirate discovering a vending machine",
+  "A robot learning how to bake cookies",
+  "A mermaid stuck in a video meeting",
+  "A wizard whose spell only makes confetti",
+  "A bear ordering a very tiny espresso",
+  "A detective investigating a missing sandwich",
+  "A llama winning a karaoke contest",
+  "A superhero late for the morning bus",
+  "A shark trying to assemble flat-pack furniture",
+  "A knight asking a dragon for directions",
+  "A raccoon opening a fancy restaurant",
+  "A snowman enjoying a tropical vacation",
+  "A flamingo teaching a yoga class",
+  "A vampire at the dentist",
+  "A chicken landing on the moon",
+  "A whale learning to ride a bicycle",
+  "A genie with only oddly specific wishes",
+  "A monkey running a serious business meeting",
+  "A unicorn stuck in airport security",
+  "A crab taking the perfect family photo",
+  "An alien trying to blend in at a barbecue",
+  "A tiny chef cooking an enormous pancake",
+  "A dog secretly driving the family car",
+  "A time traveler at the wrong birthday party",
+  "An octopus attempting to knit a sweater",
+  "A magician whose rabbit refuses to cooperate",
+  "A penguin delivering pizza through a volcano",
 ];
+function pickPrompt(current) {
+  const choices = PROMPTS.filter((prompt) => prompt !== current);
+  return choices[Math.floor(Math.random() * choices.length)];
+}
 function Illustration({ kind, small = false }) {
   return (
     <svg
@@ -937,6 +971,8 @@ function App() {
 function Room({ room, act, open, copy }) {
   const info = GAMES[room.mode];
   const isHost = room.you === room.host;
+  const currentPlayer = room.players.find((p) => p.id === room.you);
+  const isSpectating = currentPlayer?.spectating;
   const ready =
     room.players.length >= info.minimum &&
     room.players.every((p) => p.connected);
@@ -1036,7 +1072,9 @@ function Room({ room, act, open, copy }) {
       ) : (
         <div className="play-grid">
           <section className="play-panel">
-            {room.mode === "telephone" ? (
+            {isSpectating ? (
+              <Spectator room={room} />
+            ) : room.mode === "telephone" ? (
               <Telephone room={room} act={act} />
             ) : (
               <Scribble room={room} act={act} />
@@ -1048,7 +1086,15 @@ function Room({ room, act, open, copy }) {
               <Users size={18} />
             </div>
             <PlayerList room={room} scores={room.mode === "scribble"} />
-            {room.mode === "telephone" ? (
+            {isSpectating ? (
+              <div className="friendly-note">
+                <Sparkles size={20} />
+                <span>
+                  You joined after this game started. Enjoy the show—you’ll be
+                  added automatically when the next game begins.
+                </span>
+              </div>
+            ) : room.mode === "telephone" ? (
               <div className="friendly-note">
                 <Sparkles size={20} />
                 <span>
@@ -1065,10 +1111,11 @@ function Room({ room, act, open, copy }) {
     </main>
   );
 }
-function PlayerList({ room, scores = false }) {
+function PlayerList({ room, scores = false, results = false }) {
   return (
     <ul className="player-list">
       {[...room.players]
+        .filter((p) => !results || !p.spectating)
         .sort((a, b) => (scores ? b.score - a.score : 0))
         .map((p, i) => (
           <li key={p.id}>
@@ -1083,22 +1130,26 @@ function PlayerList({ room, scores = false }) {
               <span>
                 {!p.connected
                   ? "Reconnecting…"
-                  : p.id === room.drawer &&
-                      room.mode === "scribble" &&
-                      room.phase !== "lobby"
-                    ? "The artist"
-                    : room.submitted?.includes(p.id)
-                      ? "Ready for the next one"
-                      : p.id === room.host
-                        ? "Host with the most"
-                        : "Here for a good time"}
+                  : p.spectating
+                    ? "Watching this game"
+                    : p.id === room.drawer &&
+                        room.mode === "scribble" &&
+                        room.phase !== "lobby"
+                      ? "The artist"
+                      : room.submitted?.includes(p.id)
+                        ? "Ready for the next one"
+                        : p.id === room.host
+                          ? "Host with the most"
+                          : "Here for a good time"}
               </span>
             </div>
-            {scores ? (
+            {scores && !p.spectating ? (
               <b className="score">
                 {p.score}
                 <small>pts</small>
               </b>
+            ) : p.spectating ? (
+              <span className="player-dot" />
             ) : room.submitted?.includes(p.id) ? (
               <Check size={18} color="#538568" />
             ) : p.id === room.host ? (
@@ -1109,6 +1160,25 @@ function PlayerList({ room, scores = false }) {
           </li>
         ))}
     </ul>
+  );
+}
+function Spectator({ room }) {
+  return (
+    <div className="waiting-screen">
+      <span className="big-icon">
+        <Users size={42} />
+      </span>
+      <div className="eyebrow">YOU’RE IN THE ROOM</div>
+      <h2>Catch this round from the sidelines.</h2>
+      <p>
+        This game was already underway when you joined.
+        <br />
+        You’ll jump into the action when the host starts the next game.
+      </p>
+      {room.mode === "scribble" && room.phase !== "choose" && (
+        <DrawingCanvas strokes={room.strokes} />
+      )}
+    </div>
   );
 }
 function Telephone({ room, act }) {
@@ -1130,12 +1200,12 @@ function Telephone({ room, act }) {
         <p>
           Waiting for the rest of the crew to finish.
           <br />
-          {room.submitted.length} of {room.players.length} players are ready.
+          {room.submitted.length} of {room.activePlayerCount} players are ready.
         </p>
         <div className="progress-track">
           <div
             style={{
-              width: `${(room.submitted.length / room.players.length) * 100}%`,
+              width: `${(room.submitted.length / room.activePlayerCount) * 100}%`,
             }}
           />
         </div>
@@ -1145,7 +1215,7 @@ function Telephone({ room, act }) {
     <>
       <div className="play-title">
         <span className="eyebrow">
-          CHAPTER {room.round + 1} OF {room.players.length}
+          CHAPTER {room.round + 1} OF {room.activePlayerCount}
         </span>
         <span className="game-tag purple">
           {room.phase === "prompt"
@@ -1204,9 +1274,7 @@ function Telephone({ room, act }) {
           {room.phase === "prompt" && (
             <button
               className="text-button"
-              onClick={() =>
-                setText(PROMPTS[Math.floor(Math.random() * PROMPTS.length)])
-              }
+              onClick={() => setText(pickPrompt(text))}
             >
               <Shuffle size={15} /> Give me a little inspiration
             </button>
@@ -1247,7 +1315,7 @@ function Scribble({ room, act }) {
       <div className="play-title">
         <span className="eyebrow">
           ROUND {room.round + 1} OF {room.rounds} · ARTIST{" "}
-          {(room.turn % room.players.length) + 1} OF {room.players.length}
+          {(room.turn % room.activePlayerCount) + 1} OF {room.activePlayerCount}
         </span>
         <span
           className={`timer ${room.deadline - now < 11000 ? "urgent" : ""}`}
@@ -1530,8 +1598,9 @@ function DrawingCanvas({ strokes = [], editable = false, onStroke, onEdit }) {
 }
 function Results({ room, act }) {
   const [chain, setChain] = useState(0);
-  const winner = [...room.players].sort((a, b) => b.score - a.score)[0];
-  const winners = room.players.filter((p) => p.score === winner.score);
+  const players = room.players.filter((p) => !p.spectating);
+  const winner = [...players].sort((a, b) => b.score - a.score)[0];
+  const winners = players.filter((p) => p.score === winner.score);
   return (
     <section className="results">
       <div className="results-heading">
@@ -1594,7 +1663,7 @@ function Results({ room, act }) {
         </>
       ) : (
         <div className="final-scores">
-          <PlayerList room={room} scores />
+          <PlayerList room={room} scores results />
         </div>
       )}
       <div className="results-actions">

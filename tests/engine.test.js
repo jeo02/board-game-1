@@ -34,12 +34,19 @@ test("rooms enforce names, capacity, host controls and minimum players", () => {
   for (let i = 1; i < 8; i++) addPlayer(r, `p${i}`, `Player ${i}`);
   assert.throws(() => addPlayer(r, "p9", "Player 9"), /full/);
   startGame(r, "p0");
-  assert.throws(() => addPlayer(r, "p9", "Late guest"), /already started/);
+  assert.throws(() => addPlayer(r, "p9", "Late guest"), /full/);
   assert.throws(() => startGame(r, "p0"), /already in progress/);
 });
 test("telephone rotates private chains and reveals complete stories", () => {
   const r = setup();
   startGame(r, "p0");
+  addPlayer(r, "late", "Late guest");
+  assert.equal(r.players.find((p) => p.id === "late").spectating, true);
+  assert.equal(viewFor(r, "late").activePlayerCount, 3);
+  assert.throws(
+    () => telephoneSubmit(r, "late", "Too late"),
+    /watching this game/,
+  );
   for (let i = 0; i < 3; i++) telephoneSubmit(r, `p${i}`, `Prompt ${i}`);
   assert.equal(r.phase, "draw");
   assert.equal(viewFor(r, "p1").previous.text, "Prompt 0");
@@ -63,7 +70,9 @@ test("telephone rotates private chains and reveals complete stories", () => {
   );
   assert.equal(viewFor(r, "p0").chains.length, 3);
   startGame(r, "p0");
+  assert.equal(r.players.find((p) => p.id === "late").spectating, false);
   assert.equal(r.phase, "prompt");
+  assert.equal(r.chains.length, 4);
   assert.equal(r.chains[0].entries.length, 0);
 });
 test("telephone supports an even player count ending in a drawing", () => {
@@ -105,6 +114,7 @@ test("scribble keeps words private, scores once and rotates to results", () => {
   startGame(r, "p0");
   assert.equal(r.phase, "choose");
   assert.equal(viewFor(r, "p1").choices, undefined);
+  assert.equal(viewFor(r, "p1").wordDeck, undefined);
   assert.throws(() => chooseWord(r, "p1", r.choices[0]), /turn/);
   chooseWord(r, "p0", r.choices[0]);
   assert.equal(viewFor(r, "p1").word, null);
@@ -145,6 +155,22 @@ test("timeouts auto-pick words and advance rounds without guesses", () => {
   tick(r, r.deadline + 1);
   assert.equal(r.drawer, "p1");
   assert.equal(r.strokes.length, 0);
+});
+
+test("scribble offers a full game of unique word choices", () => {
+  const r = createRoom("Word test", "scribble", 3, 30);
+  for (let i = 0; i < 8; i++) addPlayer(r, `p${i}`, `Player ${i}`);
+  startGame(r, "p0");
+  const offered = [];
+  for (let turn = 0; turn < 24; turn++) {
+    offered.push(...r.choices);
+    chooseWord(r, r.drawer, r.choices[0]);
+    tick(r, r.deadline + 1);
+    tick(r, r.deadline + 1);
+  }
+  assert.equal(r.phase, "results");
+  assert.equal(offered.length, 72);
+  assert.equal(new Set(offered).size, offered.length);
 });
 
 test("guesses at or after the deadline cannot earn points", () => {
