@@ -12,6 +12,10 @@ import {
   viewFor,
   tick,
 } from "../server/engine.js";
+import {
+  action as snakeAction,
+  view as snakeView,
+} from "../server/games/slither.js";
 const stroke = {
   color: "#302c41",
   width: 7,
@@ -153,4 +157,60 @@ test("guesses at or after the deadline cannot earn points", () => {
   chooseWord(r, "p0", r.choices[0]);
   assert.throws(() => guess(r, "p1", r.word, r.deadline), /Time’s up/);
   assert.equal(r.players[1].score, 0);
+});
+test("snake plugin uses the lobby, validates colors and steering, and finishes on time", () => {
+  const r = setup("slither", 2);
+  assert.equal(r.players[0].color, "#a38acc");
+  assert.throws(() => snakeAction(r, "p0", "color", { color: "red" }), /color/);
+  snakeAction(r, "p0", "color", { color: "#62b9ad" });
+  assert.equal(viewFor(r, "p1").players[0].color, "#62b9ad");
+  startGame(r, "p0");
+  assert.equal(r.phase, "arena");
+  assert.equal(viewFor(r, "p0").arena, undefined);
+  assert.equal(snakeView(r).food.length, 90);
+  assert.throws(
+    () => snakeAction(r, "p0", "color", { color: "#ee8f67" }),
+    /lobby/,
+  );
+  assert.throws(
+    () => snakeAction(r, "p0", "steer", { angle: Infinity }),
+    /direction/,
+  );
+  assert.throws(
+    () => snakeAction(r, "intruder", "steer", { angle: 0 }),
+    /room/,
+  );
+  snakeAction(r, "p0", "steer", { angle: 1 });
+  tick(r, r.arena.lastTick + 50);
+  assert.equal(snakeView(r).snakes.length, 2);
+  tick(r, r.deadline);
+  assert.equal(r.phase, "results");
+  assert.equal(viewFor(r, "p0").arena, undefined);
+  assert.equal(r.deadline, null);
+});
+test("snake eating grows and scores; collisions require manual respawn without losing points", () => {
+  const r = setup("slither", 2);
+  startGame(r, "p0");
+  const snake = r.arena.snakes[0];
+  r.arena.food[0] = { x: snake.x + 2, y: snake.y };
+  tick(r, r.arena.lastTick + 1);
+  assert.equal(r.players[0].score, 10);
+  assert.equal(snake.length, 10);
+  snake.x = 5;
+  snake.invulnerableUntil = 0;
+  tick(r, r.arena.lastTick + 1);
+  assert.ok(snake.respawnAt);
+  assert.throws(() => snakeAction(r, "p0", "steer", { angle: 0 }), /Respawn/);
+  assert.throws(() => snakeAction(r, "p0", "respawn"), /not ready/);
+  tick(r, snake.respawnAt);
+  assert.ok(
+    snake.respawnAt,
+    "A dead snake stays out until its player respawns",
+  );
+  snake.respawnAt = Date.now() - 1;
+  assert.throws(() => snakeAction(r, "p1", "respawn"), /already playing/);
+  snakeAction(r, "p0", "respawn");
+  assert.equal(snake.respawnAt, 0);
+  assert.equal(snake.length, 8);
+  assert.equal(r.players[0].score, 10);
 });

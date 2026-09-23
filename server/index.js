@@ -17,6 +17,7 @@ import {
   tick,
   clean,
 } from "./engine.js";
+import { games } from "./games/index.js";
 
 const app = express();
 const http = createServer(app);
@@ -41,6 +42,7 @@ function broadcast(room) {
 function leave(socket) {
   const room = rooms.get(socket.data.code);
   if (!room) return;
+  socket.leave(room.code);
   room.players = room.players.filter((p) => p.id !== socket.data.playerId);
   sessions.delete(socket.data.token);
   socket.data = {};
@@ -51,6 +53,7 @@ function leave(socket) {
   if (!["lobby", "results"].includes(room.phase)) {
     room.phase = "lobby";
     room.deadline = null;
+    delete room.arena;
     room.notice = "A player left. Gather your crew and start a fresh game.";
   }
   broadcast(room);
@@ -63,19 +66,27 @@ io.on("connection", (socket) => {
     const p = room?.players.find((p) => p.id === session.playerId);
     if (p) {
       socket.data = { ...session, token };
+      socket.join(room.code);
       p.socketId = socket.id;
       p.connected = true;
       broadcast(room);
     }
   }
   let lastAction = 0;
+  let lastSteer = 0;
   socket.on("action", (action, payload = {}, ack = () => {}) => {
     try {
       if (!payload || typeof payload !== "object")
         throw new Error("Invalid request.");
       const now = Date.now();
-      if (now - lastAction < 20) throw new Error("One moment — try again.");
-      lastAction = now;
+      const plugin = games.get(rooms.get(socket.data.code)?.mode);
+      if (plugin?.fastActions?.includes(action)) {
+        if (now - lastSteer < 40) return;
+        lastSteer = now;
+      } else {
+        if (now - lastAction < 20) throw new Error("One moment — try again.");
+        lastAction = now;
+      }
       if (["create", "join"].includes(action)) {
         if (socket.data.code) throw new Error("Leave your current room first.");
         const room =
@@ -97,6 +108,7 @@ io.on("connection", (socket) => {
         room.players.at(-1).socketId = socket.id;
         const sessionToken = randomUUID();
         socket.data = { code: room.code, playerId, token: sessionToken };
+        socket.join(room.code);
         sessions.set(sessionToken, { code: room.code, playerId });
         ack({ ok: true, token: sessionToken });
         broadcast(room);
@@ -111,11 +123,6 @@ io.on("connection", (socket) => {
         return;
       }
       if (action === "start") startGame(room, id);
-      else if (action === "submit") telephoneSubmit(room, id, payload.text);
-      else if (action === "choose") chooseWord(room, id, payload.word);
-      else if (action === "guess") guess(room, id, payload.text);
-      else if (action === "stroke") addStroke(room, id, payload);
-      else if (action === "canvas") editCanvas(room, id, payload.action);
       else if (action === "lobby") {
         if (id !== room.host || room.phase !== "results")
           throw new Error(
@@ -124,7 +131,17 @@ io.on("connection", (socket) => {
         room.phase = "lobby";
         room.deadline = null;
         room.notice = "";
-      } else throw new Error("Unknown action.");
+      } else if (plugin) {
+        const changed = plugin.action(room, id, action, payload);
+        ack({ ok: true });
+        if (changed) broadcast(room);
+        return;
+      } else if (action === "submit") telephoneSubmit(room, id, payload.text);
+      else if (action === "choose") chooseWord(room, id, payload.word);
+      else if (action === "guess") guess(room, id, payload.text);
+      else if (action === "stroke") addStroke(room, id, payload);
+      else if (action === "canvas") editCanvas(room, id, payload.action);
+      else throw new Error("Unknown action.");
       ack({ ok: true });
       broadcast(room);
     } catch (error) {
@@ -144,7 +161,7 @@ io.on("connection", (socket) => {
 });
 setInterval(() => {
   for (const room of rooms.values()) {
-    if (tick(room)) broadcast(room);
+    if (!games.has(room.mode) && tick(room)) broadcast(room);
     if (Date.now() - room.updatedAt > 4 * 60 * 60 * 1000) {
       for (const [key, session] of sessions)
         if (session.code === room.code) sessions.delete(key);
@@ -152,6 +169,21 @@ setInterval(() => {
     }
   }
 }, 500).unref();
+let arenaFrame = 0;
+setInterval(() => {
+  arenaFrame++;
+  for (const room of rooms.values()) {
+    const plugin = games.get(room.mode);
+    if (!plugin || room.phase !== "arena") continue;
+    if (plugin.tick(room)) {
+      broadcast(room);
+      continue;
+    }
+    if (room.phase === "arena" && arenaFrame % 2 === 0) {
+      io.to(room.code).volatile.emit("arena", plugin.view(room));
+    }
+  }
+}, 50).unref();
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
 const dist = fileURLToPath(new URL("../dist", import.meta.url));
 app.use(express.static(dist));
