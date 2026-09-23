@@ -25,7 +25,9 @@ async function create(page, game, name = "Alex") {
 async function join(browser, code, name) {
   const context = await browser.newContext();
   const page = await context.newPage();
-  await page.goto(new URL(`/?room=${code}`, test.info().project.use.baseURL).href);
+  await page.goto(
+    new URL(`/?room=${code}`, test.info().project.use.baseURL).href,
+  );
   await page.getByLabel("Your name").fill(name);
   await page.getByRole("button", { name: "Join room", exact: true }).click();
   await expect(
@@ -50,15 +52,18 @@ test("landing page, game filters, rules, invalid room and mobile layout", async 
   page.on("pageerror", (err) => errors.push(err.message));
   await page.goto("/");
   await expect(page).toHaveTitle("Early Career Game Night");
-  await expect(page.locator(".game-card")).toHaveCount(2);
+  await expect(page.locator(".game-card")).toHaveCount(3);
   await page.screenshot({
     path: "test-results/home-desktop.png",
     fullPage: true,
   });
   await page.getByRole("button", { name: "Party games", exact: true }).click();
   await expect(page.locator(".game-card")).toHaveCount(1);
+  await page.getByRole("button", { name: "Arcade", exact: true }).click();
+  await expect(page.locator(".game-card")).toHaveCount(1);
+  await expect(page.locator(".game-card")).toContainText("Slither Showdown");
   await page.getByRole("button", { name: "All games", exact: true }).click();
-  await expect(page.locator(".game-card")).toHaveCount(2);
+  await expect(page.locator(".game-card")).toHaveCount(3);
   await page.getByRole("button", { name: "How to play" }).first().click();
   await expect(page.locator("dialog")).toContainText("Gather 3–8 players");
   await page.keyboard.press("Escape");
@@ -204,4 +209,160 @@ test("scribble synchronizes drawing, hides words, scores guesses, and finishes",
     guest.getByRole("heading", { name: "Pull up a chair." }),
   ).toBeVisible();
   await guest.context().close();
+});
+test("slither: pick colors, play live, join mid-round, and see the leaderboard", async ({
+  page,
+  browser,
+}) => {
+  const errors = [];
+  page.on("pageerror", (err) => errors.push(err.message));
+  await page.goto("/");
+  await page
+    .locator(".game-card")
+    .filter({ hasText: "Slither Showdown" })
+    .getByRole("button", { name: "Create a room" })
+    .click();
+  await page.getByLabel("Your name").fill("Alex");
+  await page.getByRole("combobox", { name: "Round length" }).selectOption("1");
+  await page.getByRole("button", { name: "Create room", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "Pull up a chair." }),
+  ).toBeVisible();
+  const code = await page.locator(".room-code strong").innerText();
+  await expect(page.getByRole("button", { name: "Start game" })).toBeEnabled();
+  await page.getByRole("radio", { name: "Sky", exact: true }).click();
+  await expect(
+    page.getByRole("radio", { name: "Sky", exact: true }),
+  ).toHaveAttribute("aria-checked", "true");
+  const guest = await join(browser, code, "Jamie");
+  await expect(
+    guest.getByRole("radio", { name: "Sky, taken by Alex" }),
+  ).toBeDisabled();
+  await expect(
+    guest.getByRole("radio", { name: "Grape", exact: true }),
+  ).toHaveAttribute("aria-checked", "true");
+  await guest.getByRole("radio", { name: "Bubblegum", exact: true }).click();
+  await expect(
+    page.getByRole("radio", { name: "Bubblegum, taken by Jamie" }),
+  ).toBeDisabled();
+  await page.screenshot({ path: "test-results/slither-lobby.png" });
+  await page.getByRole("button", { name: "Start game" }).click();
+  for (const p of [page, guest]) {
+    await expect(p.getByRole("application")).toBeVisible();
+    await expect(p.locator(".slither-stage")).toHaveAttribute(
+      "data-state",
+      "alive",
+    );
+    await expect(p.locator(".slither-overlay")).toBeHidden();
+    await expect(p.getByLabel("Live leaderboard").locator("li")).toHaveCount(2);
+  }
+  await page.getByRole("application").press("ArrowRight");
+  await page.keyboard.down("ArrowLeft");
+  await page.waitForTimeout(400);
+  await page.keyboard.up("ArrowLeft");
+  const fps = await page.evaluate(
+    () =>
+      new Promise((resolve) => {
+        let frames = 0;
+        const start = performance.now();
+        const loop = () => {
+          frames++;
+          if (performance.now() - start < 1000) requestAnimationFrame(loop);
+          else resolve(frames);
+        };
+        requestAnimationFrame(loop);
+      }),
+  );
+  test
+    .info()
+    .annotations.push({ type: "render fps", description: String(fps) });
+  expect(fps).toBeGreaterThan(20);
+  const canvasHasArt = await page.getByRole("application").evaluate((c) => {
+    const data = c.getContext("2d").getImageData(0, 0, c.width, c.height).data;
+    const colors = new Set();
+    for (let i = 0; i < data.length; i += 4 * 97)
+      colors.add((data[i] << 16) | (data[i + 1] << 8) | data[i + 2]);
+    return colors.size;
+  });
+  expect(canvasHasArt).toBeGreaterThan(5);
+  await page.screenshot({ path: "test-results/slither-arena.png" });
+  const late = await browser.newContext();
+  const latePage = await late.newPage();
+  await latePage.goto(
+    new URL(`/?room=${code}`, test.info().project.use.baseURL).href,
+  );
+  await latePage.getByLabel("Your name").fill("Riley");
+  await latePage
+    .getByRole("button", { name: "Join room", exact: true })
+    .click();
+  await expect(latePage.getByRole("application")).toBeVisible();
+  await expect(page.getByLabel("Live leaderboard").locator("li")).toHaveCount(
+    3,
+  );
+  await latePage.setViewportSize({ width: 390, height: 844 });
+  await expect(latePage.locator("body")).toHaveJSProperty("scrollWidth", 390);
+  await latePage.screenshot({ path: "test-results/slither-mobile.png" });
+  await expect(
+    guest.getByRole("button", { name: "End round now" }),
+  ).toHaveCount(0);
+  await page.getByRole("button", { name: "End round now" }).click();
+  await expect(page.getByLabel("Final leaderboard").locator("li")).toHaveCount(
+    3,
+  );
+  await expect(page.getByRole("heading", { level: 2 })).toContainText(
+    "takes the crown!",
+  );
+  await expect(guest.getByLabel("Final leaderboard")).toContainText("Riley");
+  await page.screenshot({
+    path: "test-results/slither-results.png",
+    fullPage: true,
+  });
+  await page.getByRole("button", { name: "Back to lobby" }).click();
+  await expect(
+    guest.getByRole("heading", { name: "Pull up a chair." }),
+  ).toBeVisible();
+  expect(errors).toEqual([]);
+  await guest.context().close();
+  await late.close();
+});
+test("slither: after crashing, a countdown leads to a Respawn button", async ({
+  page,
+}) => {
+  test.setTimeout(60_000);
+  await page.goto("/");
+  await page
+    .locator(".game-card")
+    .filter({ hasText: "Slither Showdown" })
+    .getByRole("button", { name: "Create a room" })
+    .click();
+  await page.getByLabel("Your name").fill("Solo");
+  await page.getByRole("combobox", { name: "Round length" }).selectOption("1");
+  await page.getByRole("button", { name: "Create room", exact: true }).click();
+  await page.getByRole("button", { name: "Start game" }).click();
+  const arena = page.getByRole("application");
+  const stage = page.locator(".slither-stage");
+  await expect(stage).toHaveAttribute("data-state", "alive");
+  const box = await arena.boundingBox();
+  await page.mouse.move(box.x + box.width - 4, box.y + box.height / 2);
+  await expect(stage).toHaveAttribute("data-state", "dead", {
+    timeout: 30_000,
+  });
+  const overlay = page.locator(".slither-overlay");
+  await expect(overlay).toContainText("Bonk! You hit the wall.");
+  await expect(
+    overlay.getByLabel(/Respawn available in \d seconds/),
+  ).toBeVisible();
+  const respawn = page.getByRole("button", { name: "Respawn" });
+  await expect(respawn).toBeHidden();
+  await page.waitForTimeout(1500);
+  await expect(stage).toHaveAttribute("data-state", "dead");
+  await expect(respawn).toBeVisible({ timeout: 4000 });
+  await expect(respawn).toBeFocused();
+  await page.screenshot({ path: "test-results/slither-respawn.png" });
+  await page.waitForTimeout(1000);
+  await expect(stage).toHaveAttribute("data-state", "dead");
+  await respawn.click();
+  await expect(stage).toHaveAttribute("data-state", "alive");
+  await expect(overlay).toBeHidden();
+  await expect(stage).toHaveAttribute("data-length", "10");
 });

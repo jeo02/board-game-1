@@ -31,9 +31,19 @@ export const clean = (value, max = 100) =>
 const assert = (condition, message) => {
   if (!condition) throw new Error(message);
 };
-export function createRoom(name, mode, rounds = 2, seconds = 60) {
-  assert(["telephone", "scribble"].includes(mode), "Choose a game first.");
-  return {
+export function createRoom(
+  name,
+  mode,
+  rounds = 2,
+  seconds = 60,
+  plugin = null,
+  settings = {},
+) {
+  assert(
+    plugin ? plugin.id === mode : ["telephone", "scribble"].includes(mode),
+    "Choose a game first.",
+  );
+  const room = {
     code: randomBytes(3).toString("hex").toUpperCase(),
     mode,
     host: null,
@@ -50,21 +60,56 @@ export function createRoom(name, mode, rounds = 2, seconds = 60) {
     round: 0,
     updatedAt: Date.now(),
   };
+  if (plugin)
+    Object.assign(room, {
+      plugin: true,
+      meta: plugin.meta,
+      settings,
+      colors: plugin.meta.colors ?? null,
+      minPlayers: plugin.meta.minPlayers,
+      maxPlayers: plugin.meta.maxPlayers,
+      game: null,
+      results: null,
+    });
+  return room;
 }
 export function addPlayer(room, id, name) {
   assert(
-    room.phase === "lobby",
+    room.phase === "lobby" ||
+      (room.meta?.joinInProgress && room.phase === "playing"),
     "This game has already started. Join the next one!",
   );
-  assert(room.players.length < 8, "This room is full (8 players).");
+  const max = room.maxPlayers ?? 8;
+  assert(room.players.length < max, `This room is full (${max} players).`);
   const safeName = clean(name, 20);
   assert(safeName, "Enter your name to join.");
   assert(
     !room.players.some((p) => p.name.toLowerCase() === safeName.toLowerCase()),
     "That name is already in the room. Try another.",
   );
-  room.players.push({ id, name: safeName, score: 0, connected: true });
+  const player = { id, name: safeName, score: 0, connected: true };
+  if (room.colors)
+    player.color =
+      room.colors.find((c) => !room.players.some((p) => p.color === c)) ??
+      room.colors[0];
+  room.players.push(player);
   room.host ??= id;
+}
+export function setColor(room, id, color) {
+  assert(room.colors, "This game does not use player colors.");
+  assert(
+    ["lobby", "results"].includes(room.phase),
+    "Pick your color between games.",
+  );
+  assert(room.colors.includes(color), "Choose one of the available colors.");
+  const player = room.players.find((p) => p.id === id);
+  assert(player, "Join the room first.");
+  const owner = room.players.find((p) => p.color === color);
+  assert(
+    !owner || owner === player,
+    `${owner?.name} already picked that color.`,
+  );
+  player.color = color;
 }
 export function startGame(room, id) {
   assert(id === room.host, "Only the host can start the game.");
@@ -72,14 +117,21 @@ export function startGame(room, id) {
     ["lobby", "results"].includes(room.phase),
     "A game is already in progress.",
   );
-  const minimum = room.mode === "telephone" ? 3 : 2;
+  const minimum = room.minPlayers ?? (room.mode === "telephone" ? 3 : 2);
   assert(
     room.players.length >= minimum && room.players.every((p) => p.connected),
-    `Gather at least ${minimum} connected players to start.`,
+    `Gather at least ${minimum} connected ${minimum === 1 ? "player" : "players"} to start.`,
   );
   room.players.forEach((p) => {
     p.score = 0;
   });
+  if (room.plugin) {
+    room.phase = "playing";
+    room.deadline = null;
+    room.results = null;
+    room.notice = "";
+    return;
+  }
   room.round = 0;
   room.turn = 0;
   room.messages = [];
@@ -255,8 +307,13 @@ export function tick(room, now = Date.now()) {
   return true;
 }
 export function viewFor(room, id) {
-  const { word, choices, chains, submissions, strokes, ...view } = room;
+  const { word, choices, chains, submissions, strokes, game, ...view } = room;
   view.you = id;
+  if (room.plugin) {
+    delete view.messages;
+    delete view.submitted;
+    return view;
+  }
   view.submitted = Object.keys(submissions);
   view.strokes =
     room.mode === "telephone"
