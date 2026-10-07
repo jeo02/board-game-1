@@ -73,6 +73,38 @@ const GAMES = {
     ],
   },
 };
+const EXTERNAL_GAMES = {
+  "gartic-phone": {
+    name: "Gartic Phone",
+    label: "THE ORIGINAL PARTY CLASSIC",
+    description:
+      "Jump over to Gartic Phone for its full collection of drawing, writing, and animation modes.",
+    players: "4+ players",
+    time: "15–30 min",
+    tag: "External game",
+    color: "purple",
+    categories: ["Party games"],
+    kind: "Drawing",
+    illustration: "telephone",
+    caption: "continue the chaos on the official site",
+    url: "https://garticphone.com/",
+  },
+  skribbl: {
+    name: "skribbl.io",
+    label: "DRAW. GUESS. REPEAT.",
+    description:
+      "Head to skribbl.io for classic real-time drawing and guessing in a private or public room.",
+    players: "2–20 players",
+    time: "10–30 min",
+    tag: "External game",
+    color: "orange",
+    categories: ["Drawing & guessing"],
+    kind: "Drawing",
+    illustration: "scribble",
+    caption: "classic drawing and guessing, one click away",
+    url: "https://skribbl.io/",
+  },
+};
 const minimumFor = (info) => info?.minimum ?? info?.minPlayers ?? 2;
 const themeStyle = (info) =>
   info?.theme
@@ -388,10 +420,22 @@ function App() {
   const [toast, setToast] = useState("");
   const [pluginGames, setPluginGames] = useState({});
   const games = { ...GAMES, ...pluginGames };
+  const gameCards = [
+    ...Object.entries(games).map(([key, info]) => ({
+      key,
+      info,
+      external: false,
+    })),
+    ...Object.entries(EXTERNAL_GAMES).map(([key, info]) => ({
+      key,
+      info,
+      external: true,
+    })),
+  ];
   const gameInfo = games[game] ?? room?.meta ?? GAMES.telephone;
   const categories = [
     "All games",
-    ...new Set(Object.values(games).flatMap((g) => g.categories ?? [])),
+    ...new Set(gameCards.flatMap(({ info }) => info.categories ?? [])),
   ];
   useEffect(() => {
     fetch("/api/games")
@@ -409,6 +453,12 @@ function App() {
       );
       setError("");
     };
+    const onStroke = (stroke) =>
+      setRoom((current) =>
+        current
+          ? { ...current, strokes: [...(current.strokes || []), stroke] }
+          : current,
+      );
     const onLeft = () => {
       setRoom(null);
       sessionStorage.removeItem("gameToken");
@@ -417,12 +467,14 @@ function App() {
     const onConnect = () => setConnected(true);
     const onDisconnect = () => setConnected(false);
     socket.on("room", onRoom);
+    socket.on("stroke", onStroke);
     socket.on("left", onLeft);
     socket.on("connect", onConnect);
     socket.on("disconnect", onDisconnect);
     if (code) setModal("join");
     return () => {
       socket.off("room", onRoom);
+      socket.off("stroke", onStroke);
       socket.off("left", onLeft);
       socket.off("connect", onConnect);
       socket.off("disconnect", onDisconnect);
@@ -597,7 +649,7 @@ function App() {
                 </h2>
               </div>
               <span className="collection-count">
-                {String(Object.keys(games).length).padStart(2, "0")} games ·
+                {String(gameCards.length).padStart(2, "0")} games ·
                 endless inside jokes
               </span>
             </div>
@@ -618,13 +670,13 @@ function App() {
               </span>
             </div>
             <div className="game-grid">
-              {Object.entries(games)
-                .map(([key, info], index) => ({ key, info, index }))
+              {gameCards
+                .map((card, index) => ({ ...card, index }))
                 .filter(
                   ({ info }) =>
                     filter === "All games" || info.categories?.includes(filter),
                 )
-                .map(({ key, info, index }) => (
+                .map(({ key, info, external, index }) => (
                   <article
                     className={`game-card ${info.color ?? "themed"}`}
                     style={themeStyle(info)}
@@ -633,13 +685,17 @@ function App() {
                     <div className="art-panel">
                       <div className="art-badges">
                         <span>
-                          <span className="tiny-dot" /> {info.badge}
+                          <span className="tiny-dot" />{" "}
+                          {external ? info.label : info.badge}
                         </span>
                         <span className="number">
                           {String(index + 1).padStart(2, "0")}
                         </span>
                       </div>
-                      <Illustration kind={key} art={info.art} />
+                      <Illustration
+                        kind={info.illustration || key}
+                        art={info.art}
+                      />
                       <span className="art-caption">{info.caption}</span>
                     </div>
                     <div className="card-body">
@@ -669,18 +725,31 @@ function App() {
                         </span>
                       </div>
                       <div className="card-actions">
-                        <button
-                          className="button dark"
-                          onClick={() => open("create", key)}
-                        >
-                          Create a room <ArrowRight size={17} />
-                        </button>
-                        <button
-                          className="text-button"
-                          onClick={() => open("rules", key)}
-                        >
-                          How to play <ArrowUpRight size={15} />
-                        </button>
+                        {external ? (
+                          <a
+                            className="button dark"
+                            href={info.url}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            Play on {info.name} <ArrowUpRight size={17} />
+                          </a>
+                        ) : (
+                          <>
+                            <button
+                              className="button dark"
+                              onClick={() => open("create", key)}
+                            >
+                              Create a room <ArrowRight size={17} />
+                            </button>
+                            <button
+                              className="text-button"
+                              onClick={() => open("rules", key)}
+                            >
+                              How to play <ArrowUpRight size={15} />
+                            </button>
+                          </>
+                        )}
                       </div>
                     </div>
                   </article>
@@ -1555,9 +1624,13 @@ function paint(ctx, stroke, width, height) {
     ctx.fill();
   } else ctx.stroke();
 }
+function paintLatestSegment(ctx, stroke, width, height) {
+  paint(ctx, { ...stroke, points: stroke.points.slice(-2) }, width, height);
+}
 function DrawingCanvas({ strokes = [], editable = false, onStroke, onEdit }) {
   const canvas = useRef(null);
   const current = useRef(null);
+  const renderedStrokes = useRef(null);
   const [color, setColor] = useState(COLORS[0]);
   const [width, setWidth] = useState(7);
   const redraw = () => {
@@ -1568,7 +1641,21 @@ function DrawingCanvas({ strokes = [], editable = false, onStroke, onEdit }) {
     strokes.forEach((s) => paint(ctx, s, 800, 440));
     if (current.current) paint(ctx, current.current, 800, 440);
   };
-  useEffect(redraw, [strokes]);
+  useEffect(() => {
+    const ctx = canvas.current?.getContext("2d");
+    if (!ctx) return;
+    const previous = renderedStrokes.current;
+    const appended =
+      previous &&
+      strokes.length >= previous.length &&
+      previous.every((stroke, index) => stroke === strokes[index]);
+    if (appended)
+      strokes
+        .slice(previous.length)
+        .forEach((stroke) => paint(ctx, stroke, 800, 440));
+    else redraw();
+    renderedStrokes.current = strokes;
+  }, [strokes]);
   const point = (e) => {
     const r = canvas.current.getBoundingClientRect();
     return [
@@ -1597,12 +1684,22 @@ function DrawingCanvas({ strokes = [], editable = false, onStroke, onEdit }) {
           e.preventDefault();
           canvas.current.setPointerCapture(e.pointerId);
           current.current = { color, width, points: [point(e)] };
-          redraw();
+          paintLatestSegment(
+            canvas.current.getContext("2d"),
+            current.current,
+            800,
+            440,
+          );
         }}
         onPointerMove={(e) => {
           if (current.current && editable) {
             current.current.points.push(point(e));
-            redraw();
+            paintLatestSegment(
+              canvas.current.getContext("2d"),
+              current.current,
+              800,
+              440,
+            );
             if (current.current.points.length >= 990) finish();
           }
         }}

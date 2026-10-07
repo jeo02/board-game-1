@@ -15,6 +15,7 @@ Open **http://localhost:5173**. Create a room and share its code or invite link.
 - **Scribble Club:** 2–8 players take turns selecting a secret word and drawing while everyone else guesses. Includes 1–3 rounds, 30/60/90 second turns, automatic timeout progression, speed-based points, and a final scoreboard.
 - Both games include private room codes, host controls, invite links, an 8-color canvas, brush sizes, eraser, undo, and clear. Refreshing or briefly losing connection restores your player session. Leaving mid-game returns everyone to the lobby.
 - **Slither Showdown** (plugin): 1–8 players pick a snake color in the lobby, then steer around a round arena eating glowing pellets to grow. Hitting another snake knocks you out. After a 3-second countdown, a Respawn button brings you back, and the length you lost is dropped as food for everyone else. Rounds last 1, 3 or 5 minutes. Friends can join mid-round, and a live leaderboard ranks everyone by length. Steer with the mouse, touch or arrow keys. Hold click, Space or the on-screen Boost button to speed up; boosting costs length.
+- The game picker also includes direct tiles for launching Gartic Phone and skribbl.io on their official sites.
 
 ## Game plugins
 
