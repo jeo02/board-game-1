@@ -10,9 +10,9 @@
     "dev": "concurrently -k \"node --watch server/index.js\" \"vite --host 0.0.0.0\"",
     "build": "vite build",
     "start": "node server/index.js",
-    "test": "node --test tests/engine.test.js",
+    "test": "node --test tests/engine.test.js tests/plugins.test.js",
     "test:e2e": "playwright test",
-    "format": "prettier --write src server tests index.html vite.config.js playwright.config.js",
+    "format": "prettier --write src server plugins tests index.html vite.config.js playwright.config.js",
     "check": "npm run test && npm run build"
   },
   "dependencies": {

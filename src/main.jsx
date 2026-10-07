@@ -11,6 +11,7 @@ import {
   Crown,
   Dice5,
   Eraser,
+  Gamepad2,
   Heart,
   Link,
   LogOut,
@@ -27,6 +28,7 @@ import {
   X,
 } from "lucide-react";
 import "./styles.css";
+import { ColorPicker, Leaderboard, PluginStage } from "./games.jsx";
 
 const socket = io({ auth: { token: sessionStorage.getItem("gameToken") } });
 const GAMES = {
@@ -40,7 +42,15 @@ const GAMES = {
     tag: "A little chaotic",
     color: "purple",
     minimum: 3,
-    category: "Party games",
+    badge: "THE ICEBREAKER",
+    caption: "a perfectly imperfect chain reaction",
+    kind: "Drawing",
+    categories: ["Drawing & guessing", "Party games"],
+    rules: [
+      "Gather 3–8 players. Everyone starts by writing a funny sentence.",
+      "Draw the sentence you receive, then describe the drawing passed to you. Keep the previous turn a secret!",
+      "Once every story has made the rounds, reveal the entire chain together. No points. Just plot twists.",
+    ],
   },
   scribble: {
     name: "Scribble Club",
@@ -52,7 +62,15 @@ const GAMES = {
     tag: "Quick thinking",
     color: "orange",
     minimum: 2,
-    category: "Drawing & guessing",
+    badge: "THE CROWD FAVORITE",
+    caption: "bad drawings make great memories",
+    kind: "Drawing",
+    categories: ["Drawing & guessing"],
+    rules: [
+      "Gather 2–8 players and choose your number of rounds and drawing time.",
+      "Take turns picking a secret word and drawing it. Everyone else types their guesses before time runs out.",
+      "Faster guesses earn more points. Artists get points for each correct guess. The highest score wins!",
+    ],
   },
 };
 const EXTERNAL_GAMES = {
@@ -65,7 +83,8 @@ const EXTERNAL_GAMES = {
     time: "15–30 min",
     tag: "External game",
     color: "purple",
-    category: "Party games",
+    categories: ["Party games"],
+    kind: "Drawing",
     illustration: "telephone",
     caption: "continue the chaos on the official site",
     url: "https://garticphone.com/",
@@ -79,12 +98,22 @@ const EXTERNAL_GAMES = {
     time: "10–30 min",
     tag: "External game",
     color: "orange",
-    category: "Drawing & guessing",
+    categories: ["Drawing & guessing"],
+    kind: "Drawing",
     illustration: "scribble",
     caption: "classic drawing and guessing, one click away",
     url: "https://skribbl.io/",
   },
 };
+const minimumFor = (info) => info?.minimum ?? info?.minPlayers ?? 2;
+const themeStyle = (info) =>
+  info?.theme
+    ? {
+        "--theme-bg": info.theme.background,
+        "--theme-accent": info.theme.accent,
+        "--theme-ink": info.theme.ink ?? info.theme.accent,
+      }
+    : undefined;
 const PROMPTS = [
   "A penguin presenting a very important spreadsheet",
   "An astronaut who forgot their lunch",
@@ -93,7 +122,17 @@ const PROMPTS = [
   "A cactus having a really good hair day",
   "A rocket powered entirely by coffee",
 ];
-function Illustration({ kind, small = false }) {
+function Illustration({ kind, art, small = false }) {
+  if (!["telephone", "scribble"].includes(kind))
+    return art ? (
+      <img
+        className={`game-art ${small ? "small" : ""}`}
+        src={art}
+        alt=""
+        aria-hidden="true"
+        loading="lazy"
+      />
+    ) : null;
   return (
     <svg
       className={`game-art ${small ? "small" : ""}`}
@@ -379,6 +418,33 @@ function App() {
   const [busy, setBusy] = useState(false);
   const [filter, setFilter] = useState("All games");
   const [toast, setToast] = useState("");
+  const [pluginGames, setPluginGames] = useState({});
+  const games = { ...GAMES, ...pluginGames };
+  const gameCards = [
+    ...Object.entries(games).map(([key, info]) => ({
+      key,
+      info,
+      external: false,
+    })),
+    ...Object.entries(EXTERNAL_GAMES).map(([key, info]) => ({
+      key,
+      info,
+      external: true,
+    })),
+  ];
+  const gameInfo = games[game] ?? room?.meta ?? GAMES.telephone;
+  const categories = [
+    "All games",
+    ...new Set(gameCards.flatMap(({ info }) => info.categories ?? [])),
+  ];
+  useEffect(() => {
+    fetch("/api/games")
+      .then((res) => (res.ok ? res.json() : []))
+      .then((list) =>
+        setPluginGames(Object.fromEntries(list.map((meta) => [meta.id, meta]))),
+      )
+      .catch(() => {});
+  }, []);
   useEffect(() => {
     const onRoom = (next) => {
       setRoom(next);
@@ -504,7 +570,7 @@ function App() {
         </div>
       )}
       {room ? (
-        <Room room={room} act={act} open={open} copy={copy} />
+        <Room room={room} act={act} open={open} copy={copy} games={games} />
       ) : (
         <main className="home">
           <section className="hero">
@@ -583,12 +649,13 @@ function App() {
                 </h2>
               </div>
               <span className="collection-count">
-                04 games · endless inside jokes
+                {String(gameCards.length).padStart(2, "0")} games ·
+                endless inside jokes
               </span>
             </div>
             <div className="filter-row">
               <div className="filters" aria-label="Filter games">
-                {["All games", "Drawing & guessing", "Party games"].map((f) => (
+                {categories.map((f) => (
                   <button
                     key={f}
                     className={filter === f ? "selected" : ""}
@@ -603,49 +670,38 @@ function App() {
               </span>
             </div>
             <div className="game-grid">
-              {[
-                ...Object.entries(GAMES).map(([key, info]) => ({
-                  key,
-                  info,
-                  external: false,
-                })),
-                ...Object.entries(EXTERNAL_GAMES).map(([key, info]) => ({
-                  key,
-                  info,
-                  external: true,
-                })),
-              ]
+              {gameCards
+                .map((card, index) => ({ ...card, index }))
                 .filter(
                   ({ info }) =>
-                    filter === "All games" || info.category === filter,
+                    filter === "All games" || info.categories?.includes(filter),
                 )
-                .map(({ key, info, external }, index) => (
-                  <article className={`game-card ${info.color}`} key={key}>
+                .map(({ key, info, external, index }) => (
+                  <article
+                    className={`game-card ${info.color ?? "themed"}`}
+                    style={themeStyle(info)}
+                    key={key}
+                  >
                     <div className="art-panel">
                       <div className="art-badges">
                         <span>
                           <span className="tiny-dot" />{" "}
-                          {external
-                            ? info.label
-                            : key === "telephone"
-                              ? "THE ICEBREAKER"
-                              : "THE CROWD FAVORITE"}
+                          {external ? info.label : info.badge}
                         </span>
-                        <span className="number">0{index + 1}</span>
+                        <span className="number">
+                          {String(index + 1).padStart(2, "0")}
+                        </span>
                       </div>
-                      <Illustration kind={info.illustration || key} />
-                      <span className="art-caption">
-                        {external
-                          ? info.caption
-                          : key === "telephone"
-                            ? "a perfectly imperfect chain reaction"
-                            : "bad drawings make great memories"}
-                      </span>
+                      <Illustration
+                        kind={info.illustration || key}
+                        art={info.art}
+                      />
+                      <span className="art-caption">{info.caption}</span>
                     </div>
                     <div className="card-body">
                       <div className="card-title-row">
                         <h3>{info.name}</h3>
-                        <span className={`game-tag ${info.color}`}>
+                        <span className={`game-tag ${info.color ?? "themed"}`}>
                           {info.tag}
                         </span>
                       </div>
@@ -660,8 +716,12 @@ function App() {
                           {info.time}
                         </span>
                         <span>
-                          <Pencil size={14} />
-                          Drawing
+                          {info.plugin ? (
+                            <Gamepad2 size={14} />
+                          ) : (
+                            <Pencil size={14} />
+                          )}
+                          {info.kind}
                         </span>
                       </div>
                       <div className="card-actions">
@@ -777,7 +837,7 @@ function App() {
               : modal === "join"
                 ? "Your crew is waiting."
                 : modal === "rules"
-                  ? GAMES[game].name
+                  ? gameInfo.name
                   : modal === "leave"
                     ? "Heading out?"
                     : modal === "invite"
@@ -795,7 +855,17 @@ function App() {
                 e.preventDefault();
                 setBusy(true);
                 const data = Object.fromEntries(new FormData(e.currentTarget));
-                await act(modal, { ...data, name, mode: game, code });
+                const settings = {};
+                for (const key of Object.keys(data))
+                  if (key.startsWith("setting:"))
+                    settings[key.slice(8)] = data[key];
+                await act(modal, {
+                  ...data,
+                  settings,
+                  name,
+                  mode: game,
+                  code,
+                });
                 setBusy(false);
               }}
             >
@@ -838,7 +908,7 @@ function App() {
                   <fieldset className="game-picker">
                     <legend>Your game</legend>
                     <div className="mode-options">
-                      {Object.entries(GAMES).map(([key, info]) => (
+                      {Object.entries(games).map(([key, info]) => (
                         <button
                           type="button"
                           key={key}
@@ -848,6 +918,8 @@ function App() {
                         >
                           {key === "telephone" ? (
                             <MessageCircle size={20} />
+                          ) : info.plugin ? (
+                            <Gamepad2 size={20} />
                           ) : (
                             <Pencil size={20} />
                           )}
@@ -886,6 +958,27 @@ function App() {
                           <option value="90">90 seconds</option>
                         </select>
                       </label>
+                    </div>
+                  )}
+                  {gameInfo.settings?.length > 0 && (
+                    <div className="form-row">
+                      {gameInfo.settings.map((s) => (
+                        <label key={`${game}-${s.key}`}>
+                          {s.label}
+                          <select
+                            name={`setting:${s.key}`}
+                            defaultValue={String(
+                              s.default ?? s.options[0].value,
+                            )}
+                          >
+                            {s.options.map((o) => (
+                              <option key={o.value} value={String(o.value)}>
+                                {o.label}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      ))}
                     </div>
                   )}
                 </>
@@ -946,22 +1039,12 @@ function App() {
             <>
               <p className="modal-description">
                 {modal === "rules"
-                  ? GAMES[game].description
+                  ? gameInfo.description
                   : "A browser, a few friends, and a willingness to be a little silly. That’s everything you need."}
               </p>
               <ol className="rules-list">
                 {(modal === "rules"
-                  ? game === "telephone"
-                    ? [
-                        "Gather 3–8 players. Everyone starts by writing a funny sentence.",
-                        "Draw the sentence you receive, then describe the drawing passed to you. Keep the previous turn a secret!",
-                        "Once every story has made the rounds, reveal the entire chain together. No points. Just plot twists.",
-                      ]
-                    : [
-                        "Gather 2–8 players and choose your number of rounds and drawing time.",
-                        "Take turns picking a secret word and drawing it. Everyone else types their guesses before time runs out.",
-                        "Faster guesses earn more points. Artists get points for each correct guess. The highest score wins!",
-                      ]
+                  ? (gameInfo.rules ?? [])
                   : [
                       "Create a room, pick a game, and share the six-character code with your friends.",
                       "Join on separate devices or browsers. Keep a call open if you’re playing remotely.",
@@ -1001,19 +1084,34 @@ function App() {
   );
 }
 
-function Room({ room, act, open, copy }) {
-  const info = GAMES[room.mode];
+function Room({ room, act, open, copy, games }) {
+  const info = games[room.mode] ?? room.meta;
   const isHost = room.you === room.host;
+  const minimum = minimumFor(info);
+  const capacity = room.maxPlayers ?? 8;
   const ready =
-    room.players.length >= info.minimum &&
-    room.players.every((p) => p.connected);
+    room.players.length >= minimum && room.players.every((p) => p.connected);
+  const settingsSummary = (info.settings ?? [])
+    .map(
+      (s) =>
+        s.options.find(
+          (o) => String(o.value) === String(room.settings?.[s.key]),
+        )?.label,
+    )
+    .filter(Boolean)
+    .join(" · ");
   return (
     <main className="room-page">
       <div className="room-top">
         <button className="text-button" onClick={() => open("leave")}>
           <ChevronLeft size={17} /> All games
         </button>
-        <span className={`game-tag ${info.color}`}>{info.name}</span>
+        <span
+          className={`game-tag ${info.color ?? "themed"}`}
+          style={themeStyle(info)}
+        >
+          {info.name}
+        </span>
         <button className="text-button" onClick={() => open("leave")}>
           <LogOut size={15} /> Leave
         </button>
@@ -1038,8 +1136,11 @@ function Room({ room, act, open, copy }) {
       )}
       {room.phase === "lobby" ? (
         <div className="lobby-grid">
-          <section className={`lobby-feature ${info.color}`}>
-            <Illustration kind={room.mode} />
+          <section
+            className={`lobby-feature ${info.color ?? "themed"}`}
+            style={themeStyle(info)}
+          >
+            <Illustration kind={room.mode} art={info.art} />
             <div className="eyebrow">THE CREW’S COMING TOGETHER</div>
             <h2>Pull up a chair.</h2>
             <p>{info.description}</p>
@@ -1050,9 +1151,11 @@ function Room({ room, act, open, copy }) {
               </span>
               <span>
                 <Clock3 size={16} />
-                {room.mode === "scribble"
-                  ? `${room.rounds} rounds · ${room.seconds}s turns`
-                  : "Everyone writes, draws & guesses"}
+                {room.plugin
+                  ? settingsSummary || info.time
+                  : room.mode === "scribble"
+                    ? `${room.rounds} rounds · ${room.seconds}s turns`
+                    : "Everyone writes, draws & guesses"}
               </span>
             </div>
             <button
@@ -1065,9 +1168,12 @@ function Room({ room, act, open, copy }) {
           <section className="players-panel">
             <div className="panel-title">
               <h3>The lovely people</h3>
-              <span>{room.players.length}/8</span>
+              <span>
+                {room.players.length}/{capacity}
+              </span>
             </div>
             <PlayerList room={room} />
+            {room.colors && <ColorPicker room={room} act={act} />}
             <button
               className="invite-button"
               onClick={() => copy(`${location.origin}/?room=${room.code}`)}
@@ -1079,7 +1185,7 @@ function Room({ room, act, open, copy }) {
               <p>
                 {ready
                   ? "The gang’s here. Let the chaos begin."
-                  : `Waiting for ${Math.max(0, info.minimum - room.players.length)} more ${info.minimum - room.players.length === 1 ? "player" : "players"}${room.players.some((p) => !p.connected) ? " and everyone to reconnect" : ""}…`}
+                  : `Waiting for ${Math.max(0, minimum - room.players.length)} more ${minimum - room.players.length === 1 ? "player" : "players"}${room.players.some((p) => !p.connected) ? " and everyone to reconnect" : ""}…`}
               </p>
             </div>
             {isHost ? (
@@ -1099,7 +1205,41 @@ function Room({ room, act, open, copy }) {
           </section>
         </div>
       ) : room.phase === "results" ? (
-        <Results room={room} act={act} />
+        <Results room={room} act={act} info={info} />
+      ) : room.plugin ? (
+        <div className="play-grid">
+          <section className="play-panel arena-panel">
+            <PluginStage room={room} socket={socket} />
+          </section>
+          <aside className="players-panel in-game">
+            <div className="panel-title">
+              <h3>Leaderboard</h3>
+              <Trophy size={18} />
+            </div>
+            <Leaderboard
+              room={room}
+              socket={socket}
+              live
+              unit={info.scoreUnit ?? "pts"}
+            />
+            {info.joinInProgress && (
+              <button
+                className="invite-button"
+                onClick={() => copy(`${location.origin}/?room=${room.code}`)}
+              >
+                <Plus size={18} /> Friends can hop in anytime <Link size={15} />
+              </button>
+            )}
+            {isHost && (
+              <button
+                className="button outline full"
+                onClick={() => act("finish")}
+              >
+                End round now
+              </button>
+            )}
+          </aside>
+        </div>
       ) : (
         <div className="play-grid">
           <section className="play-panel">
@@ -1139,7 +1279,12 @@ function PlayerList({ room, scores = false }) {
         .sort((a, b) => (scores ? b.score - a.score : 0))
         .map((p, i) => (
           <li key={p.id}>
-            <span className={`avatar avatar-${room.players.indexOf(p) % 5}`}>
+            <span
+              className={`avatar avatar-${room.players.indexOf(p) % 5}`}
+              style={
+                p.color ? { background: p.color, color: "#fff" } : undefined
+              }
+            >
               {p.name.slice(0, 1).toUpperCase()}
             </span>
             <div>
@@ -1623,10 +1768,15 @@ function DrawingCanvas({ strokes = [], editable = false, onStroke, onEdit }) {
     </div>
   );
 }
-function Results({ room, act }) {
+function Results({ room, act, info }) {
   const [chain, setChain] = useState(0);
-  const winner = [...room.players].sort((a, b) => b.score - a.score)[0];
-  const winners = room.players.filter((p) => p.score === winner.score);
+  const winner = room.plugin
+    ? (room.players.find((p) => p.id === room.results?.[0]?.id) ??
+      room.players[0])
+    : [...room.players].sort((a, b) => b.score - a.score)[0];
+  const winners = room.plugin
+    ? [winner]
+    : room.players.filter((p) => p.score === winner.score);
   return (
     <section className="results">
       <div className="results-heading">
@@ -1648,10 +1798,20 @@ function Results({ room, act }) {
         <p>
           {room.mode === "telephone"
             ? "From innocent sentence to beautiful nonsense. Explore every story below."
-            : "A round of applause for the art, the guesses, and the glorious chaos."}
+            : room.plugin
+              ? "What a round. Here’s how everyone stacked up."
+              : "A round of applause for the art, the guesses, and the glorious chaos."}
         </p>
       </div>
-      {room.mode === "telephone" ? (
+      {room.plugin ? (
+        <div className="final-scores">
+          <Leaderboard
+            room={room}
+            entries={room.results ?? []}
+            unit={info.scoreUnit ?? "pts"}
+          />
+        </div>
+      ) : room.mode === "telephone" ? (
         <>
           <div className="chain-tabs">
             {room.chains.map((c, i) => (
