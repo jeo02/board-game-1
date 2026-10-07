@@ -1121,6 +1121,68 @@ select {
   padding: 15px;
   color: #8f78a2;
 }
+.team-picker {
+  margin-top: 20px;
+}
+.team-picker > span {
+  display: block;
+  margin-bottom: 9px;
+  color: #8f8197;
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+}
+.team-picker > div {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.team-picker button {
+  border: 1px solid #ddd3e8;
+  border-radius: 9px;
+  padding: 10px 8px;
+  background: #faf7fc;
+  font-size: 11px;
+  font-weight: 650;
+}
+.team-picker button small {
+  display: block;
+  margin-top: 3px;
+  color: #a397aa;
+  font-size: 8px;
+  font-weight: 500;
+}
+.team-picker button.selected {
+  border-color: #987db3;
+  background: #eee6f6;
+  color: #73598d;
+  box-shadow: inset 0 0 0 1px #987db3;
+}
+.team-scoreboard {
+  margin-bottom: 20px;
+}
+.team-score {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid #e5dfea;
+  border-radius: 9px;
+  padding: 11px 13px;
+  margin-top: 8px;
+  color: #8c7c95;
+  font-size: 12px;
+}
+.team-score strong {
+  color: #79629f;
+  font:
+    750 20px "Manrope",
+    sans-serif;
+}
+.team-score.active {
+  border-color: #aa91c2;
+  background: #f1ebf7;
+}
 .notice {
   background: #f8ead0;
   color: #9b794a;
@@ -1257,6 +1319,104 @@ blockquote {
 .choose-screen {
   text-align: center;
   padding: 60px 15px;
+}
+.monikers-ready,
+.monikers-guessing {
+  padding: 38px 15px;
+  text-align: center;
+}
+.monikers-ready .play-title {
+  margin: -15px 0 45px;
+  text-align: left;
+}
+.monikers-ready .play-subtitle {
+  max-width: 520px;
+  margin: 0 auto 24px;
+}
+.monikers-card {
+  display: grid;
+  min-height: 280px;
+  place-items: center;
+  align-content: center;
+  gap: 18px;
+  margin: 18px 0;
+  padding: 35px;
+  border: 2px solid #9c82b8;
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 15% 15%, #fff 0 3px, transparent 4px),
+    radial-gradient(circle at 85% 80%, #d8cae8 0 4px, transparent 5px), #f4eef9;
+  background-size:
+    42px 42px,
+    54px 54px,
+    auto;
+  box-shadow: 0 7px 0 #d8cae8;
+  text-align: center;
+}
+.monikers-card > span {
+  color: #9178a9;
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: 2px;
+}
+.monikers-card h2 {
+  max-width: 520px;
+  margin: 0;
+  color: #564365;
+  font-size: clamp(28px, 5vw, 45px);
+  line-height: 1.15;
+}
+.monikers-actions {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: 12px;
+  margin-top: 26px;
+}
+.monikers-turn-stats {
+  display: flex;
+  justify-content: center;
+  gap: 32px;
+  margin-top: 28px;
+  color: #9a8ca2;
+  font-size: 11px;
+}
+.monikers-turn-stats strong {
+  color: #765e8c;
+  font-size: 17px;
+}
+.monikers-results {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+  max-width: 680px;
+  margin: 35px auto;
+}
+.monikers-results article {
+  display: grid;
+  gap: 7px;
+  padding: 30px;
+  border: 1px solid #e0d8e7;
+  border-radius: 14px;
+  background: #fffefa;
+  text-align: center;
+}
+.monikers-results article.winner {
+  border-color: #9b80b7;
+  background: #f0e9f7;
+  box-shadow: 0 5px 0 #d4c4e4;
+}
+.monikers-results span {
+  color: #79668a;
+  font-weight: 700;
+}
+.monikers-results strong {
+  color: #5c486d;
+  font:
+    800 48px "Manrope",
+    sans-serif;
+}
+.monikers-results small {
+  color: #9e91a6;
 }
 .big-icon {
   display: inline-grid;

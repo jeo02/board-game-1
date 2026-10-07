@@ -8,7 +8,10 @@ import {
   createRoom,
   addPlayer,
   setColor,
+  setTeam,
   startGame,
+  startMonikersTurn,
+  playMonikersCard,
   telephoneSubmit,
   chooseWord,
   guess,
@@ -183,6 +186,10 @@ io.on("connection", (socket) => {
         startGame(room, id);
         if (room.plugin) startPluginGame(room);
       } else if (action === "color") setColor(room, id, payload.color);
+      else if (action === "team") setTeam(room, id, payload.team);
+      else if (action === "monikers-start") startMonikersTurn(room, id);
+      else if (action === "monikers-card")
+        playMonikersCard(room, id, payload.result);
       else if (action === "finish") {
         if (id !== room.host || !room.game)
           throw new Error("Only the host can end the round early.");

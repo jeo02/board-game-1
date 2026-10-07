@@ -63,8 +63,8 @@ test("landing page, game filters, rules, invalid room and mobile layout", async 
   page.on("pageerror", (err) => errors.push(err.message));
   await page.goto("/");
   await expect(page).toHaveTitle("Early Career Game Night");
-  await expect(page.locator(".game-card")).toHaveCount(5);
-  await expect(page.locator(".collection-count")).toContainText("05 games");
+  await expect(page.locator(".game-card")).toHaveCount(6);
+  await expect(page.locator(".collection-count")).toContainText("06 games");
   await expect(
     page
       .locator(".game-card")
@@ -82,7 +82,7 @@ test("landing page, game filters, rules, invalid room and mobile layout", async 
     fullPage: true,
   });
   await page.getByRole("button", { name: "Party games", exact: true }).click();
-  await expect(page.locator(".game-card")).toHaveCount(2);
+  await expect(page.locator(".game-card")).toHaveCount(3);
   await page
     .getByRole("button", { name: "Drawing & guessing", exact: true })
     .click();
@@ -91,7 +91,7 @@ test("landing page, game filters, rules, invalid room and mobile layout", async 
   await expect(page.locator(".game-card")).toHaveCount(1);
   await expect(page.locator(".game-card")).toContainText("Slither Showdown");
   await page.getByRole("button", { name: "All games", exact: true }).click();
-  await expect(page.locator(".game-card")).toHaveCount(5);
+  await expect(page.locator(".game-card")).toHaveCount(6);
   await page.getByRole("button", { name: "How to play" }).first().click();
   await expect(page.locator("dialog")).toContainText("Gather 3–8 players");
   await page.keyboard.press("Escape");
@@ -230,6 +230,33 @@ test("scribble synchronizes drawing, hides words, scores guesses, and finishes",
     guest.getByRole("heading", { name: "Pull up a chair." }),
   ).toBeVisible();
   await guest.context().close();
+});
+test("monikers forms teams and keeps the clue card private", async ({
+  page,
+  browser,
+}) => {
+  const code = await create(page, "Monikers");
+  const guest1 = await join(browser, code, "Jamie");
+  const guest2 = await join(browser, code, "Riley");
+  const guest3 = await join(browser, code, "Morgan");
+  await expect(page.getByRole("button", { name: /Team Moon/ })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect(
+    guest1.getByRole("button", { name: /Team Sun/ }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "Start game" }).click();
+  await expect(page.getByText("You’re giving the clues.")).toBeVisible();
+  await page.getByRole("button", { name: "Start 60-second turn" }).click();
+  await expect(page.getByText("YOUR MONIKER")).toBeVisible();
+  await expect(guest1.getByText("YOUR MONIKER")).toHaveCount(0);
+  await expect(guest1.getByText(/Team Moon is guessing/)).toBeVisible();
+  await page.getByRole("button", { name: "Got it!" }).click();
+  await expect(page.getByText("1 this turn")).toBeVisible();
+  await guest1.context().close();
+  await guest2.context().close();
+  await guest3.context().close();
 });
 test("slither: pick colors, play live, join mid-round, and see the leaderboard", async ({
   page,

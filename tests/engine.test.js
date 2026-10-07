@@ -3,7 +3,10 @@ import assert from "node:assert/strict";
 import {
   createRoom,
   addPlayer,
+  setTeam,
   startGame,
+  startMonikersTurn,
+  playMonikersCard,
   telephoneSubmit,
   chooseWord,
   guess,
@@ -36,6 +39,57 @@ test("rooms enforce names, capacity, host controls and minimum players", () => {
   startGame(r, "p0");
   assert.throws(() => addPlayer(r, "p9", "Late guest"), /already started/);
   assert.throws(() => startGame(r, "p0"), /already in progress/);
+});
+test("monikers assigns teams, keeps cards private, scores, and advances turns", () => {
+  const r = createRoom("Monikers", "monikers", 2, 30);
+  for (let i = 0; i < 4; i++) addPlayer(r, `p${i}`, `Player ${i}`);
+  assert.deepEqual(
+    r.players.map((p) => p.team),
+    [0, 1, 0, 1],
+  );
+  setTeam(r, "p3", 0);
+  assert.throws(() => startGame(r, "p0"), /two players on each team/);
+  setTeam(r, "p3", 1);
+  startGame(r, "p0");
+  assert.equal(r.phase, "monikers-ready");
+  const giver = r.monikers.activePlayer;
+  assert.equal(viewFor(r, giver).monikers.card, null);
+  startMonikersTurn(r, giver);
+  const card = viewFor(r, giver).monikers.card;
+  assert.ok(card);
+  assert.equal(viewFor(r, "p1").monikers.card, null);
+  assert.throws(() => playMonikersCard(r, "p1", "guessed"), /clue giver/);
+  playMonikersCard(r, giver, "guessed");
+  assert.equal(r.teams[0].score, 1);
+  assert.equal(r.monikers.turnScore, 1);
+  const deadline = r.deadline;
+  assert.equal(tick(r, deadline + 1), true);
+  assert.equal(r.phase, "monikers-ready");
+  assert.equal(r.monikers.activeTeam, 1);
+  assert.notEqual(r.monikers.activePlayer, giver);
+});
+
+test("monikers reuses the same deck across three rounds and ends by team", () => {
+  const r = createRoom("Monikers", "monikers", 2, 30);
+  for (let i = 0; i < 4; i++) addPlayer(r, `p${i}`, `Player ${i}`);
+  startGame(r, "p0");
+  r.monikers.cards = ["One", "Two"];
+  r.monikers.deck = ["One", "Two"];
+  for (let round = 0; round < 3; round++) {
+    const giver = r.monikers.activePlayer;
+    startMonikersTurn(r, giver);
+    playMonikersCard(r, giver, "guessed");
+    playMonikersCard(r, giver, "guessed");
+    if (round < 2) {
+      assert.equal(r.monikers.round, round + 1);
+      assert.equal(r.monikers.deck.length, 2);
+      assert.equal(r.phase, "monikers-ready");
+    }
+  }
+  assert.equal(r.phase, "results");
+  assert.equal(r.teams[0].score + r.teams[1].score, 6);
+  for (const player of r.players)
+    assert.equal(player.score, r.teams[player.team].score);
 });
 test("telephone rotates private chains and reveals complete stories", () => {
   const r = setup();

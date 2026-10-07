@@ -72,6 +72,27 @@ const GAMES = {
       "Faster guesses earn more points. Artists get points for each correct guess. The highest score wins!",
     ],
   },
+  monikers: {
+    name: "Monikers",
+    label: "SAME CARDS. FEWER WORDS.",
+    description:
+      "Two teams race through the same deck three times: describe it, say one word, then act it out.",
+    players: "4–12 players",
+    time: "20–40 min",
+    tag: "Team game",
+    color: "purple",
+    minimum: 4,
+    badge: "THE TEAM PICK",
+    caption: "three rounds, one increasingly familiar deck",
+    kind: "Team clues",
+    categories: ["Party games", "Team games"],
+    art: "/monikers.svg",
+    rules: [
+      "Split into two teams with at least two players each. The game uses five cards per player and the same deck for all three rounds.",
+      "On your team’s 60-second turn, one clue giver works through as many cards as possible. Each correct card is worth one point; skipped cards stay in the deck.",
+      "Round 1: describe the card without saying any part of the answer. Round 2: give exactly one word. Round 3: act it out without speaking. The team with the most points wins.",
+    ],
+  },
 };
 const EXTERNAL_GAMES = {
   "gartic-phone": {
@@ -649,8 +670,8 @@ function App() {
                 </h2>
               </div>
               <span className="collection-count">
-                {String(gameCards.length).padStart(2, "0")} games ·
-                endless inside jokes
+                {String(gameCards.length).padStart(2, "0")} games · endless
+                inside jokes
               </span>
             </div>
             <div className="filter-row">
@@ -1089,8 +1110,15 @@ function Room({ room, act, open, copy, games }) {
   const isHost = room.you === room.host;
   const minimum = minimumFor(info);
   const capacity = room.maxPlayers ?? 8;
+  const teamsReady =
+    room.mode !== "monikers" ||
+    room.teams.every(
+      (team) => room.players.filter((p) => p.team === team.id).length >= 2,
+    );
   const ready =
-    room.players.length >= minimum && room.players.every((p) => p.connected);
+    room.players.length >= minimum &&
+    room.players.every((p) => p.connected) &&
+    teamsReady;
   const settingsSummary = (info.settings ?? [])
     .map(
       (s) =>
@@ -1153,9 +1181,11 @@ function Room({ room, act, open, copy, games }) {
                 <Clock3 size={16} />
                 {room.plugin
                   ? settingsSummary || info.time
-                  : room.mode === "scribble"
-                    ? `${room.rounds} rounds · ${room.seconds}s turns`
-                    : "Everyone writes, draws & guesses"}
+                  : room.mode === "monikers"
+                    ? "2 teams · 3 rounds · 60s turns"
+                    : room.mode === "scribble"
+                      ? `${room.rounds} rounds · ${room.seconds}s turns`
+                      : "Everyone writes, draws & guesses"}
               </span>
             </div>
             <button
@@ -1173,6 +1203,7 @@ function Room({ room, act, open, copy, games }) {
               </span>
             </div>
             <PlayerList room={room} />
+            {room.mode === "monikers" && <TeamPicker room={room} act={act} />}
             {room.colors && <ColorPicker room={room} act={act} />}
             <button
               className="invite-button"
@@ -1185,7 +1216,11 @@ function Room({ room, act, open, copy, games }) {
               <p>
                 {ready
                   ? "The gang’s here. Let the chaos begin."
-                  : `Waiting for ${Math.max(0, minimum - room.players.length)} more ${minimum - room.players.length === 1 ? "player" : "players"}${room.players.some((p) => !p.connected) ? " and everyone to reconnect" : ""}…`}
+                  : room.mode === "monikers" &&
+                      room.players.length >= minimum &&
+                      !teamsReady
+                    ? "Each team needs at least two players…"
+                    : `Waiting for ${Math.max(0, minimum - room.players.length)} more ${minimum - room.players.length === 1 ? "player" : "players"}${room.players.some((p) => !p.connected) ? " and everyone to reconnect" : ""}…`}
               </p>
             </div>
             {isHost ? (
@@ -1240,6 +1275,16 @@ function Room({ room, act, open, copy, games }) {
             )}
           </aside>
         </div>
+      ) : room.mode === "monikers" ? (
+        <div className="play-grid">
+          <section className="play-panel">
+            <Monikers room={room} act={act} />
+          </section>
+          <aside className="players-panel in-game">
+            <TeamScoreboard room={room} />
+            <PlayerList room={room} />
+          </aside>
+        </div>
       ) : (
         <div className="play-grid">
           <section className="play-panel">
@@ -1272,6 +1317,52 @@ function Room({ room, act, open, copy, games }) {
     </main>
   );
 }
+function TeamPicker({ room, act }) {
+  const me = room.players.find((p) => p.id === room.you);
+  return (
+    <div className="team-picker">
+      <span>Pick your team</span>
+      <div>
+        {room.teams.map((team) => {
+          const count = room.players.filter((p) => p.team === team.id).length;
+          return (
+            <button
+              key={team.id}
+              type="button"
+              aria-pressed={me?.team === team.id}
+              className={me?.team === team.id ? "selected" : ""}
+              onClick={() => act("team", { team: team.id })}
+            >
+              {team.name}
+              <small>{count} players</small>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+function TeamScoreboard({ room }) {
+  return (
+    <div className="team-scoreboard">
+      <div className="panel-title">
+        <h3>Team score</h3>
+        <Trophy size={18} />
+      </div>
+      {room.teams.map((team) => (
+        <div
+          className={`team-score team-${team.id} ${
+            room.monikers?.activeTeam === team.id ? "active" : ""
+          }`}
+          key={team.id}
+        >
+          <span>{team.name}</span>
+          <strong>{team.score}</strong>
+        </div>
+      ))}
+    </div>
+  );
+}
 function PlayerList({ room, scores = false }) {
   return (
     <ul className="player-list">
@@ -1295,15 +1386,17 @@ function PlayerList({ room, scores = false }) {
               <span>
                 {!p.connected
                   ? "Reconnecting…"
-                  : p.id === room.drawer &&
-                      room.mode === "scribble" &&
-                      room.phase !== "lobby"
-                    ? "The artist"
-                    : room.submitted?.includes(p.id)
-                      ? "Ready for the next one"
-                      : p.id === room.host
-                        ? "Host with the most"
-                        : "Here for a good time"}
+                  : room.mode === "monikers"
+                    ? room.teams[p.team]?.name
+                    : p.id === room.drawer &&
+                        room.mode === "scribble" &&
+                        room.phase !== "lobby"
+                      ? "The artist"
+                      : room.submitted?.includes(p.id)
+                        ? "Ready for the next one"
+                        : p.id === room.host
+                          ? "Host with the most"
+                          : "Here for a good time"}
               </span>
             </div>
             {scores ? (
@@ -1321,6 +1414,115 @@ function PlayerList({ room, scores = false }) {
           </li>
         ))}
     </ul>
+  );
+}
+function Monikers({ room, act }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 250);
+    return () => clearInterval(timer);
+  }, []);
+  const game = room.monikers;
+  const giver = room.players.find((p) => p.id === game.activePlayer);
+  const yourTurn = room.you === game.activePlayer;
+  const roundNames = ["Describe it", "One word", "Charades"];
+  const roundHelp = [
+    "Use any words you like except the answer or any part of it.",
+    "Give exactly one word. You can repeat it, but that is all.",
+    "No words or sounds. Act it out with your whole dramatic heart.",
+  ];
+  if (room.phase === "monikers-ready")
+    return (
+      <div className="monikers-ready">
+        <div className="play-title">
+          <span className="eyebrow">
+            ROUND {game.round + 1} OF 3 · {roundNames[game.round]}
+          </span>
+          <span className="game-tag purple">{game.remaining} cards ready</span>
+        </div>
+        <span className="big-icon">
+          {game.round === 2 ? <Users size={38} /> : <MessageCircle size={38} />}
+        </span>
+        <h2>
+          {yourTurn
+            ? "You’re giving the clues."
+            : `${giver?.name} is up for ${room.teams[game.activeTeam].name}.`}
+        </h2>
+        <p className="play-subtitle">{roundHelp[game.round]}</p>
+        {yourTurn ? (
+          <button
+            className="button primary"
+            onClick={() => act("monikers-start")}
+          >
+            Start 60-second turn <Play size={17} />
+          </button>
+        ) : (
+          <div className="waiting-host">
+            Get ready to guess when {giver?.name} starts the timer.
+          </div>
+        )}
+      </div>
+    );
+  return (
+    <div className="monikers-turn">
+      <div className="play-title">
+        <span className="eyebrow">
+          ROUND {game.round + 1} OF 3 · {roundNames[game.round]}
+        </span>
+        <span
+          className={`timer ${room.deadline - now < 11000 ? "urgent" : ""}`}
+        >
+          <Clock3 size={17} />
+          {Math.max(0, Math.ceil((room.deadline - now) / 1000))}s
+        </span>
+      </div>
+      {yourTurn ? (
+        <>
+          <p className="play-subtitle">{roundHelp[game.round]}</p>
+          <article className="monikers-card">
+            <span>YOUR MONIKER</span>
+            <h2>{game.card}</h2>
+          </article>
+          <div className="monikers-actions">
+            <button
+              className="button outline"
+              onClick={() => act("monikers-card", { result: "skip" })}
+            >
+              Skip
+            </button>
+            <button
+              className="button primary"
+              onClick={() => act("monikers-card", { result: "guessed" })}
+            >
+              <Check size={18} /> Got it!
+            </button>
+          </div>
+        </>
+      ) : (
+        <div className="monikers-guessing">
+          <span className="big-icon">
+            <Users size={38} />
+          </span>
+          <h2>
+            {room.teams[game.activeTeam].name} is guessing for {giver?.name}.
+          </h2>
+          <p>
+            {room.players.find((p) => p.id === room.you)?.team ===
+            game.activeTeam
+              ? "Call out your guesses. The clue card stays private."
+              : "Watch the performance and keep the answer to yourself."}
+          </p>
+        </div>
+      )}
+      <div className="monikers-turn-stats">
+        <span>
+          <strong>{game.turnScore}</strong> this turn
+        </span>
+        <span>
+          <strong>{game.remaining}</strong> cards left
+        </span>
+      </div>
+    </div>
   );
 }
 function Telephone({ room, act }) {
@@ -1770,6 +1972,10 @@ function DrawingCanvas({ strokes = [], editable = false, onStroke, onEdit }) {
 }
 function Results({ room, act, info }) {
   const [chain, setChain] = useState(0);
+  const winningTeam =
+    room.mode === "monikers"
+      ? [...room.teams].sort((a, b) => b.score - a.score)[0]
+      : null;
   const winner = room.plugin
     ? (room.players.find((p) => p.id === room.results?.[0]?.id) ??
       room.players[0])
@@ -1791,19 +1997,38 @@ function Results({ room, act, info }) {
         <h2>
           {room.mode === "telephone"
             ? "Well, that took a turn."
-            : winners.length > 1
-              ? "Great minds draw alike. It’s a tie!"
-              : `${winner.name} takes the crown!`}
+            : room.mode === "monikers"
+              ? room.teams[0].score === room.teams[1].score
+                ? "The teams are perfectly tied!"
+                : `${winningTeam.name} takes the deck!`
+              : winners.length > 1
+                ? "Great minds draw alike. It’s a tie!"
+                : `${winner.name} takes the crown!`}
         </h2>
         <p>
           {room.mode === "telephone"
             ? "From innocent sentence to beautiful nonsense. Explore every story below."
-            : room.plugin
-              ? "What a round. Here’s how everyone stacked up."
-              : "A round of applause for the art, the guesses, and the glorious chaos."}
+            : room.mode === "monikers"
+              ? "Three rounds, fewer clues, and a lot of suspiciously specific acting."
+              : room.plugin
+                ? "What a round. Here’s how everyone stacked up."
+                : "A round of applause for the art, the guesses, and the glorious chaos."}
         </p>
       </div>
-      {room.plugin ? (
+      {room.mode === "monikers" ? (
+        <div className="monikers-results">
+          {room.teams.map((team) => (
+            <article
+              className={team.id === winningTeam.id ? "winner" : ""}
+              key={team.id}
+            >
+              <span>{team.name}</span>
+              <strong>{team.score}</strong>
+              <small>cards guessed</small>
+            </article>
+          ))}
+        </div>
+      ) : room.plugin ? (
         <div className="final-scores">
           <Leaderboard
             room={room}
