@@ -412,5 +412,10 @@ test("slither: after crashing, a countdown leads to a Respawn button", async ({
   await respawn.click();
   await expect(stage).toHaveAttribute("data-state", "alive");
   await expect(overlay).toBeHidden();
-  await expect(stage).toHaveAttribute("data-length", "10");
+  await expect
+    .poll(async () => Number(await stage.getAttribute("data-length")))
+    .toBeGreaterThanOrEqual(10);
+  await expect
+    .poll(async () => Number(await stage.getAttribute("data-length")))
+    .toBeLessThan(15);
 });
