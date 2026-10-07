@@ -91,6 +91,26 @@ test("monikers reuses the same deck across three rounds and ends by team", () =>
   for (const player of r.players)
     assert.equal(player.score, r.teams[player.team].score);
 });
+
+test("monikers skips safely and returns an unfinished card after timeout", () => {
+  const r = createRoom("Monikers", "monikers", 2, 30);
+  for (let i = 0; i < 4; i++) addPlayer(r, `p${i}`, `Player ${i}`);
+  startGame(r, "p0");
+  r.monikers.cards = ["First", "Second", "Third"];
+  r.monikers.deck = ["First", "Second", "Third"];
+  const giver = r.monikers.activePlayer;
+  startMonikersTurn(r, giver);
+  assert.equal(r.monikers.current, "First");
+  playMonikersCard(r, giver, "skip");
+  assert.equal(r.monikers.current, "Second");
+  assert.deepEqual(r.monikers.deck, ["Third", "First"]);
+  const deadline = r.deadline;
+  tick(r, deadline + 1);
+  assert.equal(r.phase, "monikers-ready");
+  assert.equal(r.monikers.activeTeam, 1);
+  assert.equal(r.monikers.current, null);
+  assert.deepEqual(r.monikers.deck, ["Third", "First", "Second"]);
+});
 test("telephone rotates private chains and reveals complete stories", () => {
   const r = setup();
   startGame(r, "p0");

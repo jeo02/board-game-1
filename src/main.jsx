@@ -2019,7 +2019,7 @@ function Results({ room, act, info }) {
         <div className="monikers-results">
           {room.teams.map((team) => (
             <article
-              className={team.id === winningTeam.id ? "winner" : ""}
+              className={team.score === winningTeam.score ? "winner" : ""}
               key={team.id}
             >
               <span>{team.name}</span>

@@ -11,6 +11,7 @@
     "build": "vite build",
     "start": "node server/index.js",
     "test": "node --test tests/engine.test.js tests/plugins.test.js",
+    "test:coverage": "node --experimental-test-coverage --test-coverage-lines=95 --test-coverage-branches=85 --test-coverage-functions=95 --test tests/engine.test.js tests/plugins.test.js",
     "test:e2e": "playwright test",
     "format": "prettier --write src server plugins tests index.html vite.config.js playwright.config.js",
     "check": "npm run test && npm run build"
