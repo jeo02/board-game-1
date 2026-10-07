@@ -2108,3 +2108,130 @@ img.game-art {
     min-height: 320px;
   }
 }
+
+/* Team picker for team-based plugin games */
+.team-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.team-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 11px;
+  font-weight: 650;
+  color: #6f6778;
+}
+.team-controls label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.team-controls select {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 8px;
+  background: #fff;
+  font-size: 12px;
+}
+.team-controls .button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.team-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
+.team-column {
+  display: flex;
+  flex-direction: column;
+  border-radius: 12px;
+  padding: 12px;
+  background: color-mix(in srgb, var(--team) 10%, white);
+  border: 2px solid color-mix(in srgb, var(--team) 25%, white);
+}
+.team-column.mine {
+  border-color: var(--team);
+}
+.team-column header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.team-column header i {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--team);
+  flex-shrink: 0;
+}
+.team-column header strong {
+  flex: 1;
+  font:
+    750 13px "Manrope",
+    sans-serif;
+}
+.team-column header span {
+  font-size: 11px;
+  font-weight: 700;
+  color: #6f6778;
+  background: #fff;
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+.team-column header span.short {
+  color: #b5482f;
+}
+.team-column ul {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 10px;
+  flex: 1;
+}
+.team-column li {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 0;
+  overflow-wrap: anywhere;
+}
+.team-column li small {
+  font-weight: 400;
+  color: #94869e;
+}
+.team-column li svg {
+  color: #b19563;
+  flex-shrink: 0;
+}
+.team-column li.offline {
+  opacity: 0.5;
+}
+.team-column li.empty {
+  color: #a59aa8;
+  font-weight: 400;
+  font-style: italic;
+}
+.team-join {
+  border: 0;
+  border-radius: 999px;
+  padding: 7px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  background: var(--team);
+  color: #fff;
+}
+.team-join:focus-visible {
+  outline: 3px solid #302c41;
+  outline-offset: 2px;
+}
+.leaderboard li > div > span + span {
+  margin-top: 2px;
+}

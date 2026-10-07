@@ -1,5 +1,99 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Check, Crown, Medal } from "lucide-react";
+import { Check, Crown, Medal, Shuffle } from "lucide-react";
+
+// Team helpers shared by the lobby, live leaderboard and results.
+export const teamName = (room, team) =>
+  room.meta?.teams?.names[team] ?? `Team ${team + 1}`;
+export const teamColor = (room, team) => room.meta?.teams?.colors[team];
+export const teamsReady = (room) =>
+  !room.teamCount ||
+  Array.from({ length: room.teamCount }, (_, t) =>
+    room.players.filter((p) => p.team === t),
+  ).every((members) => members.length >= room.meta.teams.minPlayers);
+
+export function TeamPicker({ room, act }) {
+  const isHost = room.you === room.host;
+  const me = room.players.find((p) => p.id === room.you);
+  const { min, max, minPlayers } = room.meta.teams;
+  return (
+    <div className="team-picker">
+      {isHost && (
+        <div className="team-controls">
+          {max > min && (
+            <label>
+              Teams
+              <select
+                value={room.teamCount}
+                onChange={(e) =>
+                  act("teams", { count: Number(e.target.value) })
+                }
+              >
+                {Array.from({ length: max - min + 1 }, (_, i) => min + i).map(
+                  (n) => (
+                    <option key={n} value={n}>
+                      {n} teams
+                    </option>
+                  ),
+                )}
+              </select>
+            </label>
+          )}
+          <button
+            type="button"
+            className="button small outline"
+            onClick={() => act("shuffle")}
+          >
+            <Shuffle size={14} /> Shuffle teams
+          </button>
+        </div>
+      )}
+      <div className="team-columns">
+        {Array.from({ length: room.teamCount }, (_, t) => {
+          const members = room.players.filter((p) => p.team === t);
+          const mine = me?.team === t;
+          return (
+            <section
+              key={t}
+              className={`team-column ${mine ? "mine" : ""}`}
+              style={{ "--team": teamColor(room, t) }}
+              aria-label={teamName(room, t)}
+            >
+              <header>
+                <i />
+                <strong>{teamName(room, t)}</strong>
+                <span
+                  className={members.length < minPlayers ? "short" : ""}
+                  title={`At least ${minPlayers} players per team`}
+                >
+                  {members.length}
+                </span>
+              </header>
+              <ul>
+                {members.map((p) => (
+                  <li key={p.id} className={p.connected ? "" : "offline"}>
+                    {p.name}
+                    {p.id === room.you && <small> (you)</small>}
+                    {p.id === room.host && <Crown size={12} />}
+                  </li>
+                ))}
+                {!members.length && <li className="empty">No one yet</li>}
+              </ul>
+              {!mine && (
+                <button
+                  type="button"
+                  className="team-join"
+                  onClick={() => act("team", { team: t })}
+                >
+                  Join {teamName(room, t)}
+                </button>
+              )}
+            </section>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 export function ColorPicker({ room, act, label = "Pick your color" }) {
   const me = room.players.find((p) => p.id === room.you);
@@ -69,12 +163,36 @@ export function Leaderboard({
   }, [live, socket]);
   const source =
     (live ? board : entries) ??
-    room.players.map((p) => ({ id: p.id, score: 0, detail: "" }));
+    (room.teamCount
+      ? Array.from({ length: room.teamCount }, (_, team) => ({
+          team,
+          score: 0,
+          detail: "",
+        }))
+      : room.players.map((p) => ({ id: p.id, score: 0, detail: "" })));
+  const me = room.players.find((p) => p.id === room.you);
   const rows = source
-    .map((entry) => ({
-      ...entry,
-      player: room.players.find((p) => p.id === entry.id),
-    }))
+    .map((entry) =>
+      entry.team !== undefined
+        ? {
+            ...entry,
+            id: `team-${entry.team}`,
+            mine: me?.team === entry.team,
+            player: {
+              name: teamName(room, entry.team),
+              color: teamColor(room, entry.team),
+            },
+            members: room.players
+              .filter((p) => p.team === entry.team)
+              .map((p) => p.name)
+              .join(", "),
+          }
+        : {
+            ...entry,
+            mine: entry.id === room.you,
+            player: room.players.find((p) => p.id === entry.id),
+          },
+    )
     .filter((row) => row.player)
     .slice(0, limit);
   return (
@@ -82,8 +200,8 @@ export function Leaderboard({
       className="leaderboard"
       aria-label={live ? "Live leaderboard" : "Final leaderboard"}
     >
-      {rows.map(({ id, score, detail, player }, i) => (
-        <li key={id} className={id === room.you ? "you" : ""}>
+      {rows.map(({ id, score, detail, player, mine, members }, i) => (
+        <li key={id} className={mine ? "you" : ""}>
           <span className={`rank rank-${i + 1}`}>
             {i === 0 ? (
               <Crown size={14} />
@@ -100,8 +218,9 @@ export function Leaderboard({
           <div>
             <strong>
               {player.name}
-              {id === room.you && <small> (you)</small>}
+              {mine && <small>{members ? " (your team)" : " (you)"}</small>}
             </strong>
+            {members && <span>{members}</span>}
             {detail && <span>{detail}</span>}
           </div>
           <b className="score">
@@ -114,7 +233,7 @@ export function Leaderboard({
   );
 }
 
-export function PluginStage({ room, socket }) {
+export function PluginStage({ room, socket, act }) {
   const mountPoint = useRef(null);
   const roomRef = useRef(room);
   const instance = useRef(null);
@@ -136,6 +255,11 @@ export function PluginStage({ room, socket }) {
       // than queued, so the latest steering always wins.
       send(input) {
         socket.volatile.emit("input", input);
+      },
+      // Reliable and acknowledged, for turn-based moves that must not be
+      // dropped. Resolves to true on success; errors show in the site banner.
+      act(input) {
+        return act("play", input);
       },
     };
     import(/* @vite-ignore */ room.meta.client)

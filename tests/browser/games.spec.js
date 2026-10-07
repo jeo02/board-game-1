@@ -63,8 +63,8 @@ test("landing page, game filters, rules, invalid room and mobile layout", async 
   page.on("pageerror", (err) => errors.push(err.message));
   await page.goto("/");
   await expect(page).toHaveTitle("Early Career Game Night");
-  await expect(page.locator(".game-card")).toHaveCount(5);
-  await expect(page.locator(".collection-count")).toContainText("05 games");
+  await expect(page.locator(".game-card")).toHaveCount(6);
+  await expect(page.locator(".collection-count")).toContainText("06 games");
   await expect(
     page
       .locator(".game-card")
@@ -82,7 +82,7 @@ test("landing page, game filters, rules, invalid room and mobile layout", async 
     fullPage: true,
   });
   await page.getByRole("button", { name: "Party games", exact: true }).click();
-  await expect(page.locator(".game-card")).toHaveCount(2);
+  await expect(page.locator(".game-card")).toHaveCount(3);
   await page
     .getByRole("button", { name: "Drawing & guessing", exact: true })
     .click();
@@ -90,8 +90,11 @@ test("landing page, game filters, rules, invalid room and mobile layout", async 
   await page.getByRole("button", { name: "Arcade", exact: true }).click();
   await expect(page.locator(".game-card")).toHaveCount(1);
   await expect(page.locator(".game-card")).toContainText("Slither Showdown");
+  await page.getByRole("button", { name: "Team games", exact: true }).click();
+  await expect(page.locator(".game-card")).toHaveCount(1);
+  await expect(page.locator(".game-card")).toContainText("Name Droppers");
   await page.getByRole("button", { name: "All games", exact: true }).click();
-  await expect(page.locator(".game-card")).toHaveCount(5);
+  await expect(page.locator(".game-card")).toHaveCount(6);
   await page.getByRole("button", { name: "How to play" }).first().click();
   await expect(page.locator("dialog")).toContainText("Gather 3–8 players");
   await page.keyboard.press("Escape");
@@ -386,4 +389,150 @@ test("slither: after crashing, a countdown leads to a Respawn button", async ({
   await expect(stage).toHaveAttribute("data-state", "alive");
   await expect(overlay).toBeHidden();
   await expect(stage).toHaveAttribute("data-length", "10");
+});
+test("name droppers: team lobby, secret draft, hidden cards, disputes and team results", async ({
+  page,
+  browser,
+}) => {
+  test.setTimeout(150000);
+  const errors = [];
+  page.on("pageerror", (err) => errors.push(err.message));
+  await page.goto("/");
+  await page
+    .locator(".game-card")
+    .filter({ hasText: "Name Droppers" })
+    .getByRole("button", { name: "Create a room" })
+    .click();
+  await page.getByLabel("Your name").fill("Alex");
+  await page.getByRole("combobox", { name: "Deck size" }).selectOption("30");
+  await page.getByRole("button", { name: "Create room", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "Pull up a chair." }),
+  ).toBeVisible();
+  const code = await page.locator(".room-code strong").innerText();
+  const jamie = await join(browser, code, "Jamie");
+  const sam = await join(browser, code, "Sam");
+  const riley = await join(browser, code, "Riley");
+  const players = [page, jamie, sam, riley];
+  const sunrise = page.getByRole("region", { name: "Team Sunrise" });
+  const midnight = page.getByRole("region", { name: "Team Midnight" });
+  await expect(sunrise.locator("li")).toHaveText(["Alex (you)", "Sam"]);
+  await expect(midnight.locator("li")).toHaveText(["Jamie", "Riley"]);
+  await expect(page.getByRole("button", { name: "Start game" })).toBeEnabled();
+  await jamie.getByRole("button", { name: "Join Team Sunrise" }).click();
+  await expect(sunrise.locator("li")).toHaveCount(3);
+  await expect(page.getByRole("button", { name: "Start game" })).toBeDisabled();
+  await expect(
+    page.getByText("Every team needs at least 2 players"),
+  ).toBeVisible();
+  await jamie.getByRole("button", { name: "Join Team Midnight" }).click();
+  await expect(midnight.locator("li")).toHaveCount(2);
+  await page.screenshot({ path: "test-results/names-lobby.png" });
+  await page.getByRole("button", { name: "Start game" }).click();
+
+  for (const p of players) {
+    await expect(
+      p.getByRole("heading", { name: "Keep 8 names you like." }),
+    ).toBeVisible();
+    const cards = p.locator(".nd-pick");
+    await expect(cards).toHaveCount(16);
+    for (let i = 0; i < 8; i++) {
+      await cards.nth(i).click();
+      await expect(cards.nth(i)).toHaveAttribute("aria-pressed", "true");
+    }
+    if (p === page)
+      await page.screenshot({ path: "test-results/names-draft.png" });
+    await p.getByRole("button", { name: "Lock in my picks" }).click();
+    // The last player to lock in ends the draft right away.
+    if (p !== riley)
+      await expect(
+        p.getByRole("button", { name: "Change my picks" }),
+      ).toBeVisible();
+  }
+
+  async function giverPage() {
+    for (let i = 0; i < 40; i++) {
+      for (const p of players)
+        if (await p.getByRole("button", { name: "Start my turn" }).isVisible())
+          return p;
+      await page.waitForTimeout(250);
+    }
+    throw new Error("No one was offered the next turn");
+  }
+  const teamOf = async (p) =>
+    (await p.locator(".nd-team").first().innerText()).includes("(you)") ? 0 : 1;
+  const giver = await giverPage();
+  const giverTeam = await teamOf(giver);
+  const teammate = (
+    await Promise.all(players.map(async (p) => [p, await teamOf(p)]))
+  ).find(([p, t]) => p !== giver && t === giverTeam)[0];
+  const opponent = players.find((p) => p !== giver && p !== teammate);
+  await giver.getByRole("button", { name: "Start my turn" }).click();
+  const card = giver.locator(".nd-card h3");
+  await expect(card).toBeVisible();
+  const name = await card.innerText();
+  await expect(opponent.locator(".nd-card h3")).toHaveText(name);
+  await expect(teammate.getByText("Shout your guesses!")).toBeVisible();
+  await expect(teammate.locator(".nd-card")).toHaveCount(0);
+  await giver.screenshot({ path: "test-results/names-giver.png" });
+  await opponent.screenshot({ path: "test-results/names-watcher.png" });
+  await giver.getByRole("button", { name: "Skip" }).click();
+  await expect(card).not.toHaveText(name);
+  // Clear the whole deck in one turn.
+  for (let i = 0; i < 40; i++) {
+    const got = giver.getByRole("button", { name: "Got it!" });
+    if (!(await got.isVisible())) break;
+    await got.click();
+    await expect(got)
+      .toBeEnabled({ timeout: 5000 })
+      .catch(() => {});
+  }
+  await expect(
+    opponent.getByRole("heading", { name: "Any disagreements?" }),
+  ).toBeVisible();
+  await opponent.getByRole("button", { name: "Doesn’t count" }).first().click();
+  await expect(giver.getByRole("button", { name: "Count it" })).toBeVisible();
+  await expect(giver.getByText("1 card left this round.")).toBeVisible();
+  await expect(
+    page.getByLabel("Live leaderboard").locator("li").first(),
+  ).toContainText(giverTeam === 0 ? "Team Sunrise" : "Team Midnight");
+  await expect(
+    page.getByLabel("Live leaderboard").locator("li").first().locator(".score"),
+  ).not.toHaveText(/^0/);
+  await giver.screenshot({ path: "test-results/names-review.png" });
+  await giver.getByRole("button", { name: "Looks good, next turn" }).click();
+
+  // The disputed card is back, and the other team clears it.
+  const second = await giverPage();
+  expect(await teamOf(second)).not.toBe(giverTeam);
+  await expect(second.locator(".nd-chip")).toHaveText("1/32 cards left");
+  await second.getByRole("button", { name: "Start my turn" }).click();
+  await second.getByRole("button", { name: "Got it!" }).click();
+  await second.getByRole("button", { name: "Looks good, next turn" }).click();
+  await expect(
+    page.getByRole("heading", { name: "The deck is empty. Reshuffle!" }),
+  ).toBeVisible();
+  await page.screenshot({ path: "test-results/names-break.png" });
+  await page.getByRole("button", { name: "Start round 2" }).click();
+  await expect(page.locator(".nd-round strong")).toHaveText("One word");
+  await expect(page.getByLabel("Live leaderboard").locator("li")).toHaveCount(
+    2,
+  );
+
+  await page.getByRole("button", { name: "End round now" }).click();
+  for (const p of players)
+    await expect(p.getByLabel("Final leaderboard").locator("li")).toHaveCount(
+      2,
+    );
+  await expect(
+    page.getByLabel("Final leaderboard").locator("li").first(),
+  ).toContainText(/R1 \d+ · R2 0/);
+  await expect(page.locator(".results-heading h2")).toHaveText(
+    /Team (Sunrise|Midnight) takes the crown!/,
+  );
+  await page.screenshot({
+    path: "test-results/names-results.png",
+    fullPage: true,
+  });
+  expect(errors).toEqual([]);
 });

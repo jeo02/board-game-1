@@ -4,6 +4,8 @@ import { pathToFileURL } from "node:url";
 
 const BUILT_IN = ["telephone", "scribble"];
 const REQUIRED = ["create", "input", "tick", "frame", "leaderboard", "results"];
+const MAX_PLAYERS = 16;
+const MAX_TEAMS = 6;
 
 export function validatePlugin(plugin, folder) {
   if (!plugin || typeof plugin !== "object")
@@ -18,6 +20,7 @@ export function validatePlugin(plugin, folder) {
   const meta = plugin.meta;
   if (meta.colors && !meta.colors.every((c) => /^#[0-9a-f]{6}$/i.test(c)))
     throw new Error("meta.colors must be #rrggbb values");
+  const teams = meta.teams ? normalizeTeams(meta.teams) : null;
   const tickRate = Math.min(60, Math.max(1, plugin.tickRate ?? 20));
   return {
     ...plugin,
@@ -38,11 +41,33 @@ export function validatePlugin(plugin, folder) {
       ...meta,
       id,
       plugin: true,
+      teams,
       minPlayers: Math.max(1, meta.minPlayers ?? 2),
-      maxPlayers: Math.min(8, Math.max(1, meta.maxPlayers ?? 8)),
+      maxPlayers: Math.min(MAX_PLAYERS, Math.max(1, meta.maxPlayers ?? 8)),
       client: `/plugins/${id}/client.js`,
       art: meta.art ? `/plugins/${id}/${meta.art}` : null,
     },
+  };
+}
+
+// Team games declare meta.teams; the shared lobby then lets players pick a
+// team and the host choose how many teams to play with.
+function normalizeTeams(teams) {
+  const min = Math.max(2, Math.floor(teams.min ?? 2));
+  const max = Math.min(MAX_TEAMS, Math.max(min, Math.floor(teams.max ?? min)));
+  const colors = teams.colors ?? [];
+  if (colors.length < max || !colors.every((c) => /^#[0-9a-f]{6}$/i.test(c)))
+    throw new Error(`meta.teams.colors needs ${max} #rrggbb values`);
+  return {
+    min,
+    max,
+    default: Math.min(max, Math.max(min, teams.default ?? min)),
+    minPlayers: Math.max(1, Math.floor(teams.minPlayers ?? 1)),
+    colors: colors.slice(0, max),
+    names: Array.from(
+      { length: max },
+      (_, i) => String(teams.names?.[i] ?? "").slice(0, 24) || `Team ${i + 1}`,
+    ),
   };
 }
 
