@@ -38,6 +38,15 @@ function broadcast(room) {
         ),
       );
 }
+function broadcastStroke(room, stroke, authorId) {
+  room.updatedAt = Date.now();
+  const recipients =
+    room.mode === "telephone"
+      ? room.players.filter((p) => p.id === authorId)
+      : room.players;
+  for (const p of recipients)
+    if (p.socketId) io.to(p.socketId).emit("stroke", stroke);
+}
 function leave(socket) {
   const room = rooms.get(socket.data.code);
   if (!room) return;
@@ -114,8 +123,12 @@ io.on("connection", (socket) => {
       else if (action === "submit") telephoneSubmit(room, id, payload.text);
       else if (action === "choose") chooseWord(room, id, payload.word);
       else if (action === "guess") guess(room, id, payload.text);
-      else if (action === "stroke") addStroke(room, id, payload);
-      else if (action === "canvas") editCanvas(room, id, payload.action);
+      else if (action === "stroke") {
+        const stroke = addStroke(room, id, payload);
+        ack({ ok: true });
+        broadcastStroke(room, stroke, id);
+        return;
+      } else if (action === "canvas") editCanvas(room, id, payload.action);
       else if (action === "lobby") {
         if (id !== room.host || room.phase !== "results")
           throw new Error(
