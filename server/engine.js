@@ -71,7 +71,63 @@ export function createRoom(
       game: null,
       results: null,
     });
+  if (plugin?.meta.teams) room.teamCount = plugin.meta.teams.default;
   return room;
+}
+const teamSizes = (room) =>
+  Array.from(
+    { length: room.teamCount },
+    (_, t) => room.players.filter((p) => p.team === t).length,
+  );
+const smallestTeam = (room) => {
+  const sizes = teamSizes(room);
+  return sizes.indexOf(Math.min(...sizes));
+};
+// True when every team has enough players for the plugin's team rules.
+export function teamsReady(room) {
+  const minimum = room.meta?.teams?.minPlayers ?? 1;
+  return teamSizes(room).every((size) => size >= minimum);
+}
+function teamLobbyPlayer(room, id) {
+  assert(room.teamCount, "This game does not use teams.");
+  assert(
+    ["lobby", "results"].includes(room.phase),
+    "Teams can only change between games.",
+  );
+  const player = room.players.find((p) => p.id === id);
+  assert(player, "Join the room first.");
+  return player;
+}
+export function setTeam(room, id, team) {
+  const player = teamLobbyPlayer(room, id);
+  assert(
+    Number.isInteger(team) && team >= 0 && team < room.teamCount,
+    "Choose one of the teams.",
+  );
+  player.team = team;
+}
+export function setTeamCount(room, id, count) {
+  teamLobbyPlayer(room, id);
+  assert(id === room.host, "Only the host can change the number of teams.");
+  const { min, max } = room.meta.teams;
+  assert(
+    Number.isInteger(count) && count >= min && count <= max,
+    `Choose between ${min} and ${max} teams.`,
+  );
+  room.teamCount = count;
+  const displaced = room.players.filter((p) => p.team >= count);
+  for (const p of displaced) p.team = null;
+  for (const p of displaced) p.team = smallestTeam(room);
+}
+export function shuffleTeams(room, id, random = Math.random) {
+  teamLobbyPlayer(room, id);
+  assert(id === room.host, "Only the host can shuffle the teams.");
+  room.players
+    .map((p) => ({ p, key: random() }))
+    .sort((a, b) => a.key - b.key)
+    .forEach(({ p }, i) => {
+      p.team = i % room.teamCount;
+    });
 }
 export function addPlayer(room, id, name) {
   assert(
@@ -92,6 +148,7 @@ export function addPlayer(room, id, name) {
     player.color =
       room.colors.find((c) => !room.players.some((p) => p.color === c)) ??
       room.colors[0];
+  if (room.teamCount) player.team = smallestTeam(room);
   room.players.push(player);
   room.host ??= id;
 }
@@ -121,6 +178,10 @@ export function startGame(room, id) {
   assert(
     room.players.length >= minimum && room.players.every((p) => p.connected),
     `Gather at least ${minimum} connected ${minimum === 1 ? "player" : "players"} to start.`,
+  );
+  assert(
+    !room.teamCount || teamsReady(room),
+    `Every team needs at least ${room.meta?.teams?.minPlayers} players.`,
   );
   room.players.forEach((p) => {
     p.score = 0;

@@ -8,6 +8,10 @@ import {
   createRoom,
   addPlayer,
   setColor,
+  setTeam,
+  setTeamCount,
+  shuffleTeams,
+  teamsReady,
   startGame,
   telephoneSubmit,
   chooseWord,
@@ -32,6 +36,8 @@ const http = createServer(app);
 const io = new Server(http, { maxHttpBufferSize: 100000 });
 const rooms = new Map();
 const sessions = new Map();
+// Last leaderboard sent per room, so unchanged boards are not re-sent.
+const lastBoards = new WeakMap();
 function broadcast(room) {
   room.updatedAt = Date.now();
   const { game, ...shared } = room;
@@ -56,30 +62,58 @@ function stopGame(room, notice) {
   room.deadline = null;
   room.notice = notice;
 }
-function finishGame(room) {
-  const plugin = plugins.get(room.mode);
+// Scoreboard entries are per player, or per team ({team, score, detail}) in
+// team games. Untrusted plugin output is filtered to known players/teams.
+function scoreEntries(room, entries) {
   const ids = new Set(room.players.map((p) => p.id));
-  room.results = plugin
-    .results(room.game)
-    .filter((entry) => ids.has(entry.id))
-    .map(({ id, score, detail }) => ({
-      id,
+  return entries
+    .filter((entry) =>
+      room.teamCount
+        ? Number.isInteger(entry.team) &&
+          entry.team >= 0 &&
+          entry.team < room.teamCount
+        : ids.has(entry.id),
+    )
+    .map(({ id, team, score, detail }) => ({
+      ...(room.teamCount ? { team } : { id }),
       score: Number(score) || 0,
       detail: clean(detail, 60),
     }));
+}
+function finishGame(room) {
+  const plugin = plugins.get(room.mode);
+  room.results = scoreEntries(room, plugin.results(room.game));
   for (const entry of room.results)
-    room.players.find((p) => p.id === entry.id).score = entry.score;
+    for (const p of room.players)
+      if (room.teamCount ? p.team === entry.team : p.id === entry.id)
+        p.score = entry.score;
   room.game = null;
   room.phase = "results";
 }
+const pluginPlayer = ({ id, name, color, team }) => ({ id, name, color, team });
 function startPluginGame(room) {
   const plugin = plugins.get(room.mode);
   room.game = plugin.create({
-    players: room.players.map(({ id, name, color }) => ({ id, name, color })),
+    players: room.players.map(pluginPlayer),
     settings: room.settings,
+    teams: room.teamCount
+      ? Array.from({ length: room.teamCount }, (_, i) => ({
+          index: i,
+          name: room.meta.teams.names[i],
+          color: room.meta.teams.colors[i],
+        }))
+      : null,
   });
   room.lastTick = performance.now();
   room.ticks = 0;
+  lastBoards.delete(room);
+}
+function sendFrames(room, plugin) {
+  for (const p of room.players) {
+    if (!p.socketId || !p.connected) continue;
+    const frame = plugin.frame(room.game, p.id);
+    if (frame) io.to(p.socketId).volatile.emit("frame", frame);
+  }
 }
 function broadcastStroke(room, stroke, authorId) {
   room.updatedAt = Date.now();
@@ -105,7 +139,8 @@ function leave(socket) {
   if (
     room.game &&
     plugin.meta.continueOnLeave &&
-    room.players.length >= room.minPlayers
+    room.players.length >= room.minPlayers &&
+    (!room.teamCount || teamsReady(room))
   ) {
     broadcast(room);
     return;
@@ -124,6 +159,7 @@ io.on("connection", (socket) => {
       socket.data = { ...session, token };
       p.socketId = socket.id;
       p.connected = true;
+      lastBoards.delete(room);
       broadcast(room);
     }
   }
@@ -158,12 +194,10 @@ io.on("connection", (socket) => {
         rooms.set(room.code, room);
         const player = room.players.at(-1);
         player.socketId = socket.id;
-        if (room.game)
-          plugins.get(room.mode).join?.(room.game, {
-            id: player.id,
-            name: player.name,
-            color: player.color,
-          });
+        if (room.game) {
+          plugins.get(room.mode).join?.(room.game, pluginPlayer(player));
+          lastBoards.delete(room);
+        }
         const sessionToken = randomUUID();
         socket.data = { code: room.code, playerId, token: sessionToken };
         sessions.set(sessionToken, { code: room.code, playerId });
@@ -183,7 +217,17 @@ io.on("connection", (socket) => {
         startGame(room, id);
         if (room.plugin) startPluginGame(room);
       } else if (action === "color") setColor(room, id, payload.color);
-      else if (action === "finish") {
+      else if (action === "team") setTeam(room, id, payload.team);
+      else if (action === "teams") setTeamCount(room, id, payload.count);
+      else if (action === "shuffle") shuffleTeams(room, id);
+      else if (action === "play") {
+        // Reliable, acknowledged plugin input for turn-based moves. Errors
+        // thrown by the plugin are shown to the player.
+        const plugin = plugins.get(room.mode);
+        if (!room.game || !plugin.action) throw new Error("Unknown action.");
+        plugin.action(room.game, id, payload);
+        sendFrames(room, plugin);
+      } else if (action === "finish") {
         if (id !== room.host || !room.game)
           throw new Error("Only the host can end the round early.");
         finishGame(room);
@@ -264,22 +308,17 @@ setInterval(() => {
         continue;
       }
       room.ticks++;
-      if (room.ticks % plugin.sendEvery === 0)
-        for (const p of room.players) {
-          if (!p.socketId || !p.connected) continue;
-          const frame = plugin.frame(room.game, p.id);
-          if (frame) io.to(p.socketId).volatile.emit("frame", frame);
-        }
+      if (room.ticks % plugin.sendEvery === 0) sendFrames(room, plugin);
+      // Reliable but only sent when it changes: a volatile emit right after
+      // the frames would be dropped while the transport is still busy.
       if (room.ticks % Math.max(1, Math.round(plugin.tickRate / 2)) === 0) {
-        const board = plugin
-          .leaderboard(room.game)
-          .map(({ id, score, detail }) => ({
-            id,
-            score: Number(score) || 0,
-            detail: clean(detail, 60),
-          }));
-        for (const p of room.players)
-          if (p.socketId) io.to(p.socketId).volatile.emit("leaderboard", board);
+        const board = scoreEntries(room, plugin.leaderboard(room.game));
+        const key = JSON.stringify(board);
+        if (key !== lastBoards.get(room)) {
+          lastBoards.set(room, key);
+          for (const p of room.players)
+            if (p.socketId) io.to(p.socketId).emit("leaderboard", board);
+        }
       }
     } catch (error) {
       console.error(`Game plugin "${room.mode}" crashed:`, error);

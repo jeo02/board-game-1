@@ -28,7 +28,14 @@ import {
   X,
 } from "lucide-react";
 import "./styles.css";
-import { ColorPicker, Leaderboard, PluginStage } from "./games.jsx";
+import {
+  ColorPicker,
+  Leaderboard,
+  PluginStage,
+  TeamPicker,
+  teamName,
+  teamsReady,
+} from "./games.jsx";
 
 const socket = io({ auth: { token: sessionStorage.getItem("gameToken") } });
 const GAMES = {
@@ -649,8 +656,8 @@ function App() {
                 </h2>
               </div>
               <span className="collection-count">
-                {String(gameCards.length).padStart(2, "0")} games ·
-                endless inside jokes
+                {String(gameCards.length).padStart(2, "0")} games · endless
+                inside jokes
               </span>
             </div>
             <div className="filter-row">
@@ -1089,8 +1096,9 @@ function Room({ room, act, open, copy, games }) {
   const isHost = room.you === room.host;
   const minimum = minimumFor(info);
   const capacity = room.maxPlayers ?? 8;
+  const enough = room.players.length >= minimum;
   const ready =
-    room.players.length >= minimum && room.players.every((p) => p.connected);
+    enough && room.players.every((p) => p.connected) && teamsReady(room);
   const settingsSummary = (info.settings ?? [])
     .map(
       (s) =>
@@ -1172,7 +1180,11 @@ function Room({ room, act, open, copy, games }) {
                 {room.players.length}/{capacity}
               </span>
             </div>
-            <PlayerList room={room} />
+            {room.teamCount ? (
+              <TeamPicker room={room} act={act} />
+            ) : (
+              <PlayerList room={room} />
+            )}
             {room.colors && <ColorPicker room={room} act={act} />}
             <button
               className="invite-button"
@@ -1185,7 +1197,9 @@ function Room({ room, act, open, copy, games }) {
               <p>
                 {ready
                   ? "The gang’s here. Let the chaos begin."
-                  : `Waiting for ${Math.max(0, minimum - room.players.length)} more ${minimum - room.players.length === 1 ? "player" : "players"}${room.players.some((p) => !p.connected) ? " and everyone to reconnect" : ""}…`}
+                  : enough && !teamsReady(room)
+                    ? `Every team needs at least ${room.meta.teams.minPlayers} players. Pick a team or shuffle!`
+                    : `Waiting for ${Math.max(0, minimum - room.players.length)} more ${minimum - room.players.length === 1 ? "player" : "players"}${room.players.some((p) => !p.connected) ? " and everyone to reconnect" : ""}…`}
               </p>
             </div>
             {isHost ? (
@@ -1209,7 +1223,7 @@ function Room({ room, act, open, copy, games }) {
       ) : room.plugin ? (
         <div className="play-grid">
           <section className="play-panel arena-panel">
-            <PluginStage room={room} socket={socket} />
+            <PluginStage room={room} socket={socket} act={act} />
           </section>
           <aside className="players-panel in-game">
             <div className="panel-title">
@@ -1770,13 +1784,17 @@ function DrawingCanvas({ strokes = [], editable = false, onStroke, onEdit }) {
 }
 function Results({ room, act, info }) {
   const [chain, setChain] = useState(0);
-  const winner = room.plugin
-    ? (room.players.find((p) => p.id === room.results?.[0]?.id) ??
-      room.players[0])
-    : [...room.players].sort((a, b) => b.score - a.score)[0];
-  const winners = room.plugin
-    ? [winner]
-    : room.players.filter((p) => p.score === winner.score);
+  const top = room.results?.[0];
+  const winner = room.teamCount
+    ? { name: teamName(room, top?.team ?? 0) }
+    : room.plugin
+      ? (room.players.find((p) => p.id === top?.id) ?? room.players[0])
+      : [...room.players].sort((a, b) => b.score - a.score)[0];
+  const winners = room.teamCount
+    ? room.results.filter((entry) => entry.score === top?.score)
+    : room.plugin
+      ? [winner]
+      : room.players.filter((p) => p.score === winner.score);
   return (
     <section className="results">
       <div className="results-heading">
@@ -1792,7 +1810,9 @@ function Results({ room, act, info }) {
           {room.mode === "telephone"
             ? "Well, that took a turn."
             : winners.length > 1
-              ? "Great minds draw alike. It’s a tie!"
+              ? room.teamCount
+                ? "Neck and neck. It’s a tie!"
+                : "Great minds draw alike. It’s a tie!"
               : `${winner.name} takes the crown!`}
         </h2>
         <p>
