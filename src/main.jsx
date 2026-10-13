@@ -33,7 +33,7 @@ import {
   Leaderboard,
   PluginStage,
   TeamPicker,
-  teamName,
+  teamDisplayName,
   teamsReady,
 } from "./games.jsx";
 
@@ -113,6 +113,16 @@ const EXTERNAL_GAMES = {
   },
 };
 const minimumFor = (info) => info?.minimum ?? info?.minPlayers ?? 2;
+const teamsHint = (room, isHost) => {
+  const { noun, minPlayers } = room.meta.teams;
+  const need = minPlayers === 1 ? "a player" : `at least ${minPlayers} players`;
+  const next = !room.bots
+    ? `Pick a ${noun} or shuffle!`
+    : isHost
+      ? "Invite a friend or play the computer."
+      : "Invite a friend, or the host can add the computer.";
+  return `Every ${noun} needs ${need}. ${next}`;
+};
 const themeStyle = (info) =>
   info?.theme
     ? {
@@ -478,6 +488,9 @@ function App() {
     socket.on("left", onLeft);
     socket.on("connect", onConnect);
     socket.on("disconnect", onDisconnect);
+    // The socket may have connected between the first render and these
+    // listeners being added, in which case its "connect" event was missed.
+    setConnected(socket.connected);
     if (code) setModal("join");
     return () => {
       socket.off("room", onRoom);
@@ -1198,7 +1211,7 @@ function Room({ room, act, open, copy, games }) {
                 {ready
                   ? "The gang’s here. Let the chaos begin."
                   : enough && !teamsReady(room)
-                    ? `Every team needs at least ${room.meta.teams.minPlayers} players. Pick a team or shuffle!`
+                    ? teamsHint(room, isHost)
                     : `Waiting for ${Math.max(0, minimum - room.players.length)} more ${minimum - room.players.length === 1 ? "player" : "players"}${room.players.some((p) => !p.connected) ? " and everyone to reconnect" : ""}…`}
               </p>
             </div>
@@ -1220,6 +1233,13 @@ function Room({ room, act, open, copy, games }) {
         </div>
       ) : room.phase === "results" ? (
         <Results room={room} act={act} info={info} />
+      ) : room.plugin && info.sidebar === false ? (
+        // Games with their own side panel (like Chess) get the full width.
+        <div className="play-grid solo">
+          <section className="play-panel arena-panel">
+            <PluginStage room={room} socket={socket} act={act} />
+          </section>
+        </div>
       ) : room.plugin ? (
         <div className="play-grid">
           <section className="play-panel arena-panel">
@@ -1786,7 +1806,7 @@ function Results({ room, act, info }) {
   const [chain, setChain] = useState(0);
   const top = room.results?.[0];
   const winner = room.teamCount
-    ? { name: teamName(room, top?.team ?? 0) }
+    ? { name: teamDisplayName(room, top?.team ?? 0) }
     : room.plugin
       ? (room.players.find((p) => p.id === top?.id) ?? room.players[0])
       : [...room.players].sort((a, b) => b.score - a.score)[0];

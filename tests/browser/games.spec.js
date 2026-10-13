@@ -63,8 +63,8 @@ test("landing page, game filters, rules, invalid room and mobile layout", async 
   page.on("pageerror", (err) => errors.push(err.message));
   await page.goto("/");
   await expect(page).toHaveTitle("Early Career Game Night");
-  await expect(page.locator(".game-card")).toHaveCount(6);
-  await expect(page.locator(".collection-count")).toContainText("06 games");
+  await expect(page.locator(".game-card")).toHaveCount(7);
+  await expect(page.locator(".collection-count")).toContainText("07 games");
   await expect(
     page
       .locator(".game-card")
@@ -93,8 +93,11 @@ test("landing page, game filters, rules, invalid room and mobile layout", async 
   await page.getByRole("button", { name: "Team games", exact: true }).click();
   await expect(page.locator(".game-card")).toHaveCount(1);
   await expect(page.locator(".game-card")).toContainText("Name Droppers");
+  await page.getByRole("button", { name: "Board games", exact: true }).click();
+  await expect(page.locator(".game-card")).toHaveCount(1);
+  await expect(page.locator(".game-card")).toContainText("Chess");
   await page.getByRole("button", { name: "All games", exact: true }).click();
-  await expect(page.locator(".game-card")).toHaveCount(6);
+  await expect(page.locator(".game-card")).toHaveCount(7);
   await page.getByRole("button", { name: "How to play" }).first().click();
   await expect(page.locator("dialog")).toContainText("Gather 3–8 players");
   await page.keyboard.press("Escape");
@@ -535,4 +538,174 @@ test("name droppers: team lobby, secret draft, hidden cards, disputes and team r
     fullPage: true,
   });
   expect(errors).toEqual([]);
+});
+async function chessMove(page, from, to) {
+  await page.locator(`[data-square="${from}"]`).click();
+  await page.locator(`[data-square="${to}"]`).click();
+}
+test("chess: seat the computer, trade moves, drag a piece and resign", async ({
+  page,
+}) => {
+  const errors = [];
+  page.on("pageerror", (err) => errors.push(err.message));
+  await create(page, "Chess", "Ana");
+  const white = page.getByRole("region", { name: "White" });
+  const black = page.getByRole("region", { name: "Black" });
+  await expect(white.locator("li")).toHaveText(["Ana (you)"]);
+  await expect(page.getByRole("button", { name: "Start game" })).toBeDisabled();
+  await expect(page.getByText("Every side needs a player")).toBeVisible();
+  await black.getByRole("button", { name: "Easy" }).click();
+  await expect(black.locator("li")).toHaveText(["Computer · Easy"]);
+  await black
+    .getByRole("combobox", { name: "Computer difficulty for Black" })
+    .selectOption("medium");
+  await expect(black.locator("li")).toHaveText(["Computer · Medium"]);
+  await page.screenshot({ path: "test-results/chess-lobby.png" });
+  await page.getByRole("button", { name: "Start game" }).click();
+
+  const moves = page.locator(".cx-moves button");
+  await expect(page.locator('[data-square="e2"]')).toBeVisible();
+  await page.locator('[data-square="e2"]').click();
+  await expect(page.locator('[data-square="e4"]')).toHaveClass(/hint/);
+  await page.locator('[data-square="e4"]').click();
+  await expect(moves.first()).toHaveText("e4");
+  await expect(moves).toHaveCount(2, { timeout: 15000 });
+  await expect(page.locator(".cx-status")).toContainText("Your move");
+
+  // Drag and drop: g1 to f3.
+  const from = await page.locator('[data-square="g1"]').boundingBox();
+  const to = await page.locator('[data-square="f3"]').boundingBox();
+  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, {
+    steps: 6,
+  });
+  await page.mouse.up();
+  await expect(moves.nth(2)).toHaveText("Nf3");
+  await expect(moves).toHaveCount(4, { timeout: 15000 });
+
+  // Step back through the game, then return to the live position.
+  await moves.first().click();
+  await expect(page.locator(".cx-status")).toContainText("Reviewing move 1");
+  await page.keyboard.press("End");
+  await expect(page.locator(".cx-status")).toContainText("Your move");
+  await page.screenshot({ path: "test-results/chess-game.png" });
+
+  await page.getByRole("button", { name: "⚑ Resign" }).click();
+  await page.getByRole("button", { name: "Really resign?" }).click();
+  await expect(page.locator(".cx-card")).toContainText("You Lost");
+  await expect(page.locator(".cx-card")).toContainText("by resignation");
+  await page.getByRole("button", { name: "Continue" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Computer takes the crown!" }),
+  ).toBeVisible();
+  await expect(page.locator(".leaderboard li").first()).toContainText(
+    "Won by resignation",
+  );
+  expect(errors).toEqual([]);
+});
+test("chess: two friends pick sides, offer a draw and play to checkmate", async ({
+  page,
+  browser,
+}) => {
+  const errors = [];
+  page.on("pageerror", (err) => errors.push(err.message));
+  await create(page, "Chess", "Ana");
+  const code = await page.locator(".room-code strong").innerText();
+  const ben = await join(browser, code, "Ben");
+  ben.on("pageerror", (err) => errors.push(err.message));
+  const white = page.getByRole("region", { name: "White" });
+  const black = page.getByRole("region", { name: "Black" });
+  await expect(black.locator("li")).toHaveText(["Ben"]);
+  // Ana can't take Black while Ben is there, but the host can swap sides,
+  // and every click swaps.
+  await expect(
+    white.getByRole("button", { name: "Play as Black" }),
+  ).toHaveCount(0);
+  await page.getByRole("button", { name: "Swap sides" }).click();
+  await expect(black.locator("li")).toHaveText(["Ana (you)"]);
+  await expect(white.locator("li")).toHaveText(["Ben"]);
+  await page.getByRole("button", { name: "Swap sides" }).click();
+  await expect(white.locator("li")).toHaveText(["Ana (you)"]);
+  await page.getByRole("button", { name: "Swap sides" }).click();
+  await expect(black.locator("li")).toHaveText(["Ana (you)"]);
+  await expect(white.locator("li")).toHaveText(["Ben"]);
+  await page.getByRole("button", { name: "Start game" }).click();
+
+  // Ana plays Black, so her board is flipped.
+  await expect(ben.locator(".cx-board")).toBeVisible();
+  const aBox = await page.locator('[data-square="a1"]').boundingBox();
+  const hBox = await page.locator('[data-square="h8"]').boundingBox();
+  expect(aBox.y).toBeLessThan(hBox.y);
+  await chessMove(ben, "f2", "f3");
+  await expect(page.locator(".cx-moves button")).toHaveCount(1);
+  await chessMove(page, "e7", "e5");
+  await expect(ben.locator(".cx-moves button")).toHaveCount(2);
+  await ben.getByRole("button", { name: "½ Draw" }).click();
+  await expect(page.locator(".cx-offer")).toContainText("Ben offers a draw");
+  await page
+    .locator(".cx-offer")
+    .getByRole("button", { name: "Decline" })
+    .click();
+  await expect(page.locator(".cx-offer")).toBeHidden();
+  await chessMove(ben, "g2", "g4");
+  await expect(page.locator(".cx-moves button")).toHaveCount(3);
+  await chessMove(page, "d8", "h4");
+  await expect(ben.locator(".cx-card")).toContainText("You Lost");
+  await expect(page.locator(".cx-card")).toContainText("You Won!");
+  await expect(page.locator(".cx-moves button").last()).toHaveText("Qh4#");
+  await page.screenshot({ path: "test-results/chess-checkmate.png" });
+  await ben.getByRole("button", { name: "Continue" }).click();
+  for (const p of [page, ben])
+    await expect(
+      p.getByRole("heading", { name: "Ana takes the crown!" }),
+    ).toBeVisible();
+  expect(errors).toEqual([]);
+});
+test("chess: castling takes the king and then its rook", async ({
+  page,
+  browser,
+}) => {
+  await create(page, "Chess", "Ana");
+  const code = await page.locator(".room-code strong").innerText();
+  const ben = await join(browser, code, "Ben");
+  await page.getByRole("button", { name: "Start game" }).click();
+  const moves = page.locator(".cx-moves button");
+  const plies = [
+    [page, "e2", "e4"],
+    [ben, "e7", "e5"],
+    [page, "g1", "f3"],
+    [ben, "b8", "c6"],
+    [page, "f1", "c4"],
+    [ben, "f8", "c5"],
+  ];
+  for (const [i, [p, from, to]] of plies.entries()) {
+    await chessMove(p, from, to);
+    await expect(moves).toHaveCount(i + 1);
+  }
+  await page.locator('[data-square="e1"]').click();
+  await expect(page.locator('[data-square="g1"]')).not.toHaveClass(/hint/);
+  await expect(page.locator('[data-square="h1"]')).toHaveClass(/hint/);
+  // Clicking the king's landing square does nothing...
+  await page.locator('[data-square="g1"]').click();
+  await page.waitForTimeout(300);
+  await expect(moves).toHaveCount(6);
+  // ...the king then its rook castles.
+  await chessMove(page, "e1", "h1");
+  await expect(moves.last()).toHaveText("O-O");
+  // Dragging the king onto its rook castles too.
+  await chessMove(ben, "g8", "f6");
+  await expect(moves).toHaveCount(8);
+  await chessMove(page, "d2", "d3");
+  await expect(moves).toHaveCount(9);
+  const from = await ben.locator('[data-square="e8"]').boundingBox();
+  const to = await ben.locator('[data-square="h8"]').boundingBox();
+  await ben.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+  await ben.mouse.down();
+  await ben.mouse.move(to.x + to.width / 2, to.y + to.height / 2, {
+    steps: 6,
+  });
+  await ben.mouse.up();
+  await expect(moves).toHaveCount(10);
+  await expect(moves.last()).toHaveText("O-O");
 });

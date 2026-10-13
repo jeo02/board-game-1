@@ -1,20 +1,55 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Check, Crown, Medal, Shuffle } from "lucide-react";
+import {
+  ArrowLeftRight,
+  Bot,
+  Check,
+  Crown,
+  Medal,
+  Shuffle,
+} from "lucide-react";
 
 // Team helpers shared by the lobby, live leaderboard and results.
 export const teamName = (room, team) =>
   room.meta?.teams?.names[team] ?? `Team ${team + 1}`;
 export const teamColor = (room, team) => room.meta?.teams?.colors[team];
+export const teamBot = (room, team) => room.bots?.find((b) => b.team === team);
+export const botLabel = (room, bot) =>
+  `${room.meta.bots.name} · ${
+    room.meta.bots.levels.find((l) => l.value === bot.level)?.label ?? bot.level
+  }`;
 export const teamsReady = (room) =>
   !room.teamCount ||
-  Array.from({ length: room.teamCount }, (_, t) =>
-    room.players.filter((p) => p.team === t),
-  ).every((members) => members.length >= room.meta.teams.minPlayers);
+  Array.from({ length: room.teamCount }, (_, t) => t).every(
+    (t) =>
+      teamBot(room, t) ||
+      room.players.filter((p) => p.team === t).length >=
+        room.meta.teams.minPlayers,
+  );
+// One-seat teams (like White and Black) are named after whoever sits there.
+export const teamDisplayName = (room, team) => {
+  if (room.meta?.teams?.maxPlayers === 1) {
+    const member = room.players.find((p) => p.team === team);
+    if (member) return member.name;
+    if (teamBot(room, team)) return room.meta.bots.name;
+  }
+  return teamName(room, team);
+};
+// Dark or light text, whichever reads better on a team's color.
+const inkOn = (hex = "#000000") => {
+  const n = parseInt(hex.slice(1), 16);
+  const light =
+    0.299 * (n >> 16) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255);
+  return light > 160 ? "#302c41" : "#fff";
+};
 
 export function TeamPicker({ room, act }) {
   const isHost = room.you === room.host;
   const me = room.players.find((p) => p.id === room.you);
-  const { min, max, minPlayers } = room.meta.teams;
+  const { min, max, minPlayers, maxPlayers, noun } = room.meta.teams;
+  const capped = maxPlayers < (room.maxPlayers ?? Infinity);
+  const levels = room.meta.bots?.levels ?? [];
+  // Two one-seat sides (like White and Black) can only trade places.
+  const swap = room.teamCount === 2 && maxPlayers === 1;
   return (
     <div className="team-picker">
       {isHost && (
@@ -43,7 +78,15 @@ export function TeamPicker({ room, act }) {
             className="button small outline"
             onClick={() => act("shuffle")}
           >
-            <Shuffle size={14} /> Shuffle teams
+            {swap ? (
+              <>
+                <ArrowLeftRight size={14} /> Swap {noun}s
+              </>
+            ) : (
+              <>
+                <Shuffle size={14} /> Shuffle {noun}s
+              </>
+            )}
           </button>
         </div>
       )}
@@ -51,21 +94,31 @@ export function TeamPicker({ room, act }) {
         {Array.from({ length: room.teamCount }, (_, t) => {
           const members = room.players.filter((p) => p.team === t);
           const mine = me?.team === t;
+          const bot = teamBot(room, t);
+          const name = teamName(room, t);
           return (
             <section
               key={t}
               className={`team-column ${mine ? "mine" : ""}`}
-              style={{ "--team": teamColor(room, t) }}
-              aria-label={teamName(room, t)}
+              style={{
+                "--team": teamColor(room, t),
+                "--team-ink": inkOn(teamColor(room, t)),
+              }}
+              aria-label={name}
             >
               <header>
                 <i />
-                <strong>{teamName(room, t)}</strong>
+                <strong>{name}</strong>
                 <span
-                  className={members.length < minPlayers ? "short" : ""}
-                  title={`At least ${minPlayers} players per team`}
+                  className={members.length < minPlayers && !bot ? "short" : ""}
+                  title={
+                    capped
+                      ? `${maxPlayers} ${maxPlayers === 1 ? "seat" : "seats"}`
+                      : `At least ${minPlayers} players per ${noun}`
+                  }
                 >
-                  {members.length}
+                  {bot ? 1 : members.length}
+                  {capped && `/${maxPlayers}`}
                 </span>
               </header>
               <ul>
@@ -76,16 +129,72 @@ export function TeamPicker({ room, act }) {
                     {p.id === room.host && <Crown size={12} />}
                   </li>
                 ))}
-                {!members.length && <li className="empty">No one yet</li>}
+                {bot && (
+                  <li className="bot">
+                    <Bot size={14} /> {botLabel(room, bot)}
+                  </li>
+                )}
+                {!members.length && !bot && (
+                  <li className="empty">No one yet</li>
+                )}
               </ul>
-              {!mine && (
-                <button
-                  type="button"
-                  className="team-join"
-                  onClick={() => act("team", { team: t })}
-                >
-                  Join {teamName(room, t)}
-                </button>
+              {bot ? (
+                isHost && (
+                  <div className="team-bot">
+                    <select
+                      aria-label={`${room.meta.bots.name} difficulty for ${name}`}
+                      value={bot.level}
+                      onChange={(e) =>
+                        act("bot", { team: t, level: e.target.value })
+                      }
+                    >
+                      {levels.map((l) => (
+                        <option key={l.value} value={l.value}>
+                          {l.label}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      className="team-bot-remove"
+                      onClick={() => act("bot", { team: t, level: null })}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                )
+              ) : (
+                <>
+                  {!mine && members.length < maxPlayers && (
+                    <button
+                      type="button"
+                      className="team-join"
+                      onClick={() => act("team", { team: t })}
+                    >
+                      {capped ? "Play as" : "Join"} {name}
+                    </button>
+                  )}
+                  {isHost && levels.length > 0 && !members.length && (
+                    <div className="team-bot-pick">
+                      <span>
+                        or play the {room.meta.bots.name.toLowerCase()}
+                      </span>
+                      <div>
+                        {levels.map((l) => (
+                          <button
+                            key={l.value}
+                            type="button"
+                            onClick={() =>
+                              act("bot", { team: t, level: l.value })
+                            }
+                          >
+                            {l.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </section>
           );
@@ -182,10 +291,14 @@ export function Leaderboard({
               name: teamName(room, entry.team),
               color: teamColor(room, entry.team),
             },
-            members: room.players
-              .filter((p) => p.team === entry.team)
-              .map((p) => p.name)
-              .join(", "),
+            members: [
+              ...room.players
+                .filter((p) => p.team === entry.team)
+                .map((p) => p.name),
+              ...(teamBot(room, entry.team)
+                ? [botLabel(room, teamBot(room, entry.team))]
+                : []),
+            ].join(", "),
           }
         : {
             ...entry,
@@ -218,7 +331,13 @@ export function Leaderboard({
           <div>
             <strong>
               {player.name}
-              {mine && <small>{members ? " (your team)" : " (you)"}</small>}
+              {mine && (
+                <small>
+                  {members && room.meta.teams.maxPlayers > 1
+                    ? " (your team)"
+                    : " (you)"}
+                </small>
+              )}
             </strong>
             {members && <span>{members}</span>}
             {detail && <span>{detail}</span>}

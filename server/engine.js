@@ -72,6 +72,7 @@ export function createRoom(
       results: null,
     });
   if (plugin?.meta.teams) room.teamCount = plugin.meta.teams.default;
+  if (plugin?.meta.bots) room.bots = [];
   return room;
 }
 const teamSizes = (room) =>
@@ -79,14 +80,25 @@ const teamSizes = (room) =>
     { length: room.teamCount },
     (_, t) => room.players.filter((p) => p.team === t).length,
   );
+// A team is played either by people or by one computer player, never both.
+const botOn = (room, team) => room.bots?.find((b) => b.team === team);
+const teamLabel = (room, team) =>
+  room.meta?.teams?.names[team] ?? `Team ${team + 1}`;
+// The smallest team a person can still join, or null when every seat is taken.
 const smallestTeam = (room) => {
+  const cap = room.meta?.teams?.maxPlayers ?? Infinity;
   const sizes = teamSizes(room);
-  return sizes.indexOf(Math.min(...sizes));
+  let best = null;
+  sizes.forEach((size, t) => {
+    if (size < cap && !botOn(room, t) && (best === null || size < sizes[best]))
+      best = t;
+  });
+  return best;
 };
-// True when every team has enough players for the plugin's team rules.
+// True when every team has enough players (or the computer) to start.
 export function teamsReady(room) {
   const minimum = room.meta?.teams?.minPlayers ?? 1;
-  return teamSizes(room).every((size) => size >= minimum);
+  return teamSizes(room).every((size, t) => size >= minimum || botOn(room, t));
 }
 function teamLobbyPlayer(room, id) {
   assert(room.teamCount, "This game does not use teams.");
@@ -104,6 +116,15 @@ export function setTeam(room, id, team) {
     Number.isInteger(team) && team >= 0 && team < room.teamCount,
     "Choose one of the teams.",
   );
+  if (player.team === team) return;
+  assert(
+    !botOn(room, team),
+    `The computer is playing ${teamLabel(room, team)}. The host can remove it.`,
+  );
+  assert(
+    teamSizes(room)[team] < room.meta.teams.maxPlayers,
+    `${teamLabel(room, team)} is taken.`,
+  );
   player.team = team;
 }
 export function setTeamCount(room, id, count) {
@@ -115,19 +136,66 @@ export function setTeamCount(room, id, count) {
     `Choose between ${min} and ${max} teams.`,
   );
   room.teamCount = count;
+  if (room.bots) room.bots = room.bots.filter((b) => b.team < count);
   const displaced = room.players.filter((p) => p.team >= count);
   for (const p of displaced) p.team = null;
-  for (const p of displaced) p.team = smallestTeam(room);
+  for (const p of displaced) p.team = smallestTeam(room) ?? 0;
 }
 export function shuffleTeams(room, id, random = Math.random) {
   teamLobbyPlayer(room, id);
   assert(id === room.host, "Only the host can shuffle the teams.");
-  room.players
-    .map((p) => ({ p, key: random() }))
-    .sort((a, b) => a.key - b.key)
-    .forEach(({ p }, i) => {
-      p.team = i % room.teamCount;
+  const shuffled = (list) =>
+    list
+      .map((item) => ({ item, key: random() }))
+      .sort((a, b) => a.key - b.key)
+      .map(({ item }) => item);
+  const bots = room.bots ?? [];
+  const units = [...bots, ...room.players];
+  const before = units.map((u) => u.team);
+  // Computer players move to random teams of their own; people are dealt
+  // round-robin across the rest. Re-deal when that lands everyone back where
+  // they were (a coin flip with two one-seat sides), so a shuffle always
+  // visibly changes something when it can.
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const teams = shuffled(Array.from({ length: room.teamCount }, (_, t) => t));
+    bots.forEach((bot, i) => {
+      bot.team = teams[i];
     });
+    const open = teams.slice(bots.length);
+    shuffled(room.players).forEach((p, i) => {
+      p.team = open[i % open.length];
+    });
+    if (units.some((u, i) => u.team !== before[i])) return;
+  }
+}
+// Hands an empty team to the computer at the given level, or takes it back
+// when level is empty.
+export function setBot(room, id, team, level) {
+  teamLobbyPlayer(room, id);
+  assert(room.bots, "This game has no computer players.");
+  assert(id === room.host, "Only the host can add or remove the computer.");
+  assert(
+    Number.isInteger(team) && team >= 0 && team < room.teamCount,
+    "Choose one of the teams.",
+  );
+  const others = room.bots.filter((b) => b.team !== team);
+  if (!level) {
+    room.bots = others;
+    return;
+  }
+  assert(
+    room.meta.bots.levels.some((l) => l.value === level),
+    "Choose one of the difficulty levels.",
+  );
+  assert(
+    !room.players.some((p) => p.team === team),
+    `${teamLabel(room, team)} already has a player.`,
+  );
+  assert(
+    others.length + 1 < room.teamCount,
+    "Leave at least one team for the humans.",
+  );
+  room.bots = [...others, { team, level }];
 }
 export function addPlayer(room, id, name) {
   assert(
@@ -148,7 +216,10 @@ export function addPlayer(room, id, name) {
     player.color =
       room.colors.find((c) => !room.players.some((p) => p.color === c)) ??
       room.colors[0];
-  if (room.teamCount) player.team = smallestTeam(room);
+  if (room.teamCount) {
+    player.team = smallestTeam(room);
+    assert(player.team !== null, "Every seat in this room is taken.");
+  }
   room.players.push(player);
   room.host ??= id;
 }
@@ -179,9 +250,10 @@ export function startGame(room, id) {
     room.players.length >= minimum && room.players.every((p) => p.connected),
     `Gather at least ${minimum} connected ${minimum === 1 ? "player" : "players"} to start.`,
   );
+  const teams = room.meta?.teams;
   assert(
     !room.teamCount || teamsReady(room),
-    `Every team needs at least ${room.meta?.teams?.minPlayers} players.`,
+    `Every ${teams?.noun} needs at least ${teams?.minPlayers} ${teams?.minPlayers === 1 ? "player" : "players"}${room.bots ? " or the computer" : ""}.`,
   );
   room.players.forEach((p) => {
     p.score = 0;
