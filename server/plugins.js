@@ -21,6 +21,7 @@ export function validatePlugin(plugin, folder) {
   if (meta.colors && !meta.colors.every((c) => /^#[0-9a-f]{6}$/i.test(c)))
     throw new Error("meta.colors must be #rrggbb values");
   const teams = meta.teams ? normalizeTeams(meta.teams) : null;
+  const bots = meta.bots ? normalizeBots(meta.bots, teams) : null;
   const tickRate = Math.min(60, Math.max(1, plugin.tickRate ?? 20));
   return {
     ...plugin,
@@ -42,6 +43,7 @@ export function validatePlugin(plugin, folder) {
       id,
       plugin: true,
       teams,
+      bots,
       minPlayers: Math.max(1, meta.minPlayers ?? 2),
       maxPlayers: Math.min(MAX_PLAYERS, Math.max(1, meta.maxPlayers ?? 8)),
       client: `/plugins/${id}/client.js`,
@@ -58,16 +60,39 @@ function normalizeTeams(teams) {
   const colors = teams.colors ?? [];
   if (colors.length < max || !colors.every((c) => /^#[0-9a-f]{6}$/i.test(c)))
     throw new Error(`meta.teams.colors needs ${max} #rrggbb values`);
+  const minPlayers = Math.max(1, Math.floor(teams.minPlayers ?? 1));
   return {
     min,
     max,
     default: Math.min(max, Math.max(min, teams.default ?? min)),
-    minPlayers: Math.max(1, Math.floor(teams.minPlayers ?? 1)),
+    minPlayers,
+    // Seats per team; 1 turns teams into seats (e.g. White and Black).
+    maxPlayers: Math.min(
+      MAX_PLAYERS,
+      Math.max(minPlayers, Math.floor(teams.maxPlayers ?? MAX_PLAYERS)),
+    ),
+    noun: String(teams.noun ?? "").slice(0, 16) || "team",
     colors: colors.slice(0, max),
     names: Array.from(
       { length: max },
       (_, i) => String(teams.names?.[i] ?? "").slice(0, 24) || `Team ${i + 1}`,
     ),
+  };
+}
+
+// Games with computer opponents declare meta.bots; in the team lobby the host
+// can then hand an empty team to the computer at one of the listed levels.
+function normalizeBots(bots, teams) {
+  if (!teams) throw new Error("meta.bots needs meta.teams");
+  const levels = (bots.levels ?? []).map((level) => ({
+    value: String(level.value ?? ""),
+    label: String(level.label ?? level.value ?? "").slice(0, 24),
+  }));
+  if (!levels.length || !levels.every((l) => /^[a-z0-9-]{1,16}$/.test(l.value)))
+    throw new Error("meta.bots.levels needs {value, label} entries");
+  return {
+    name: String(bots.name ?? "").slice(0, 24) || "Computer",
+    levels,
   };
 }
 

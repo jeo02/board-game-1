@@ -378,6 +378,7 @@ button:not(:disabled):active,
 }
 .filters {
   display: flex;
+  flex-wrap: wrap;
   gap: 7px;
 }
 .filters button {
@@ -2226,7 +2227,7 @@ img.game-art {
   font-size: 11px;
   font-weight: 700;
   background: var(--team);
-  color: #fff;
+  color: var(--team-ink, #fff);
 }
 .team-join:focus-visible {
   outline: 3px solid #302c41;
@@ -2234,4 +2235,76 @@ img.game-art {
 }
 .leaderboard li > div > span + span {
   margin-top: 2px;
+}
+
+/* Plugins that bring their own side panel use the full width */
+.play-grid.solo {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* Computer players in team lobbies */
+.team-column li.bot {
+  color: #4b4458;
+}
+.team-column li.bot svg {
+  color: #6f6778;
+}
+.team-bot {
+  display: flex;
+  gap: 6px;
+}
+.team-bot select {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 6px 10px;
+  background: #fff;
+  font-size: 11px;
+  font-weight: 650;
+}
+.team-bot-remove {
+  border: 0;
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  background: #fff;
+  color: #6f6778;
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+.team-bot-pick {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 10px;
+  font-weight: 650;
+  color: #8a8190;
+  text-align: center;
+}
+.team-bot-pick div {
+  display: flex;
+  gap: 4px;
+}
+.team-bot-pick button {
+  flex: 1;
+  border: 0;
+  border-radius: 999px;
+  padding: 6px 4px;
+  font-size: 11px;
+  font-weight: 700;
+  background: #fff;
+  color: #302c41;
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+.team-bot-pick button:hover,
+.team-bot-remove:hover {
+  box-shadow: inset 0 0 0 1px #302c41;
+}
+.team-bot-pick button:focus-visible,
+.team-bot-remove:focus-visible,
+.team-bot select:focus-visible {
+  outline: 3px solid #302c41;
+  outline-offset: 2px;
 }

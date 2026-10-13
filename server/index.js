@@ -11,6 +11,7 @@ import {
   setTeam,
   setTeamCount,
   shuffleTeams,
+  setBot,
   teamsReady,
   startGame,
   telephoneSubmit,
@@ -103,6 +104,7 @@ function startPluginGame(room) {
           color: room.meta.teams.colors[i],
         }))
       : null,
+    bots: (room.bots ?? []).map(({ team, level }) => ({ team, level })),
   });
   room.lastTick = performance.now();
   room.ticks = 0;
@@ -220,6 +222,7 @@ io.on("connection", (socket) => {
       else if (action === "team") setTeam(room, id, payload.team);
       else if (action === "teams") setTeamCount(room, id, payload.count);
       else if (action === "shuffle") shuffleTeams(room, id);
+      else if (action === "bot") setBot(room, id, payload.team, payload.level);
       else if (action === "play") {
         // Reliable, acknowledged plugin input for turn-based moves. Errors
         // thrown by the plugin are shown to the player.
