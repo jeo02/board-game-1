@@ -8,6 +8,8 @@ import {
   createRoom,
   addPlayer,
   setColor,
+  setSide,
+  setSettings,
   setTeam,
   setTeamCount,
   shuffleTeams,
@@ -57,7 +59,9 @@ function broadcast(room) {
       );
 }
 function stopGame(room, notice) {
+  plugins.get(room.mode)?.dispose?.(room.game);
   room.game = null;
+  room.gameInfo = null;
   room.phase = "lobby";
   room.deadline = null;
   room.notice = notice;
@@ -82,15 +86,25 @@ function scoreEntries(room, entries) {
 }
 function finishGame(room) {
   const plugin = plugins.get(room.mode);
+  room.gameInfo = plugin.meta.showFinalState
+    ? (plugin.publicState?.(room.game) ?? null)
+    : null;
   room.results = scoreEntries(room, plugin.results(room.game));
   for (const entry of room.results)
     for (const p of room.players)
       if (room.teamCount ? p.team === entry.team : p.id === entry.id)
         p.score = entry.score;
+  plugin.dispose?.(room.game);
   room.game = null;
   room.phase = "results";
 }
-const pluginPlayer = ({ id, name, color, team }) => ({ id, name, color, team });
+const pluginPlayer = ({ id, name, color, team, side }) => ({
+  id,
+  name,
+  color,
+  team,
+  side,
+});
 function startPluginGame(room) {
   const plugin = plugins.get(room.mode);
   room.game = plugin.create({
@@ -104,6 +118,7 @@ function startPluginGame(room) {
         }))
       : null,
   });
+  room.gameInfo = null;
   room.lastTick = performance.now();
   room.ticks = 0;
   lastBoards.delete(room);
@@ -133,7 +148,10 @@ function leave(socket) {
   if (room.game) plugin.leave?.(room.game, socket.data.playerId);
   socket.data = {};
   socket.emit("left");
-  if (!room.players.length) return void rooms.delete(room.code);
+  if (!room.players.length) {
+    plugin?.dispose?.(room.game);
+    return void rooms.delete(room.code);
+  }
   if (!room.players.some((p) => p.id === room.host))
     room.host = room.players[0].id;
   if (
@@ -162,6 +180,12 @@ io.on("connection", (socket) => {
       lastBoards.delete(room);
       broadcast(room);
     }
+  }
+  if (token && !socket.data.code) {
+    sessions.delete(token);
+    socket.emit("left", {
+      notice: "Your room is no longer available. Create or join a new room.",
+    });
   }
   let lastAction = 0;
   socket.on("action", (action, payload = {}, ack = () => {}) => {
@@ -206,7 +230,14 @@ io.on("connection", (socket) => {
         return;
       }
       const room = rooms.get(socket.data.code);
-      if (!room) throw new Error("Join a room to play.");
+      if (!room) {
+        sessions.delete(socket.data.token);
+        socket.data = {};
+        socket.emit("left");
+        throw new Error(
+          "Your room is no longer available. Create or join a new room.",
+        );
+      }
       const id = socket.data.playerId;
       if (action === "leave") {
         leave(socket);
@@ -217,7 +248,19 @@ io.on("connection", (socket) => {
         startGame(room, id);
         if (room.plugin) startPluginGame(room);
       } else if (action === "color") setColor(room, id, payload.color);
-      else if (action === "team") setTeam(room, id, payload.team);
+      else if (action === "side") setSide(room, id, payload.side);
+      else if (action === "settings") {
+        const plugin = plugins.get(room.mode);
+        if (!plugin) throw new Error("This game does not use plugin settings.");
+        setSettings(
+          room,
+          id,
+          sanitizeSettings(plugin.meta, {
+            ...room.settings,
+            ...payload.settings,
+          }),
+        );
+      } else if (action === "team") setTeam(room, id, payload.team);
       else if (action === "teams") setTeamCount(room, id, payload.count);
       else if (action === "shuffle") shuffleTeams(room, id);
       else if (action === "play") {
@@ -230,6 +273,7 @@ io.on("connection", (socket) => {
       } else if (action === "finish") {
         if (id !== room.host || !room.game)
           throw new Error("Only the host can end the round early.");
+        plugins.get(room.mode).end?.(room.game);
         finishGame(room);
       } else if (room.plugin && !["lobby"].includes(action))
         throw new Error("Unknown action.");
@@ -288,6 +332,7 @@ setInterval(() => {
       for (const [key, session] of sessions)
         if (session.code === room.code) sessions.delete(key);
       rooms.delete(room.code);
+      plugins.get(room.mode)?.dispose?.(room.game);
     }
   }
 }, 500).unref();

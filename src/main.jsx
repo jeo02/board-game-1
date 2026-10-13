@@ -30,14 +30,21 @@ import {
 import "./styles.css";
 import {
   ColorPicker,
+  SidePicker,
+  LobbySettings,
   Leaderboard,
   PluginStage,
   TeamPicker,
+  defaultSettings,
+  settingVisible,
   teamName,
   teamsReady,
 } from "./games.jsx";
 
-const socket = io({ auth: { token: sessionStorage.getItem("gameToken") } });
+const socket = io({
+  autoConnect: false,
+  auth: { token: sessionStorage.getItem("gameToken") },
+});
 const GAMES = {
   telephone: {
     name: "Cosmic Telephone",
@@ -426,6 +433,8 @@ function App() {
   const [filter, setFilter] = useState("All games");
   const [toast, setToast] = useState("");
   const [pluginGames, setPluginGames] = useState({});
+  const [createSettings, setCreateSettings] = useState({});
+  useEffect(() => setCreateSettings({}), [game]);
   const games = { ...GAMES, ...pluginGames };
   const gameCards = [
     ...Object.entries(games).map(([key, info]) => ({
@@ -466,10 +475,11 @@ function App() {
           ? { ...current, strokes: [...(current.strokes || []), stroke] }
           : current,
       );
-    const onLeft = () => {
+    const onLeft = ({ notice = "" } = {}) => {
       setRoom(null);
       sessionStorage.removeItem("gameToken");
       socket.auth.token = null;
+      setError(notice);
     };
     const onConnect = () => setConnected(true);
     const onDisconnect = () => setConnected(false);
@@ -478,6 +488,8 @@ function App() {
     socket.on("left", onLeft);
     socket.on("connect", onConnect);
     socket.on("disconnect", onDisconnect);
+    setConnected(socket.connected);
+    socket.connect();
     if (code) setModal("join");
     return () => {
       socket.off("room", onRoom);
@@ -969,23 +981,38 @@ function App() {
                   )}
                   {gameInfo.settings?.length > 0 && (
                     <div className="form-row">
-                      {gameInfo.settings.map((s) => (
-                        <label key={`${game}-${s.key}`}>
-                          {s.label}
-                          <select
-                            name={`setting:${s.key}`}
-                            defaultValue={String(
-                              s.default ?? s.options[0].value,
-                            )}
-                          >
-                            {s.options.map((o) => (
-                              <option key={o.value} value={String(o.value)}>
-                                {o.label}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                      ))}
+                      {gameInfo.settings
+                        .filter((s) =>
+                          settingVisible(s, {
+                            ...defaultSettings(gameInfo),
+                            ...createSettings,
+                          }),
+                        )
+                        .map((s) => (
+                          <label key={`${game}-${s.key}`}>
+                            {s.label}
+                            <select
+                              name={`setting:${s.key}`}
+                              defaultValue={String(
+                                createSettings[s.key] ??
+                                  s.default ??
+                                  s.options[0].value,
+                              )}
+                              onChange={(e) =>
+                                setCreateSettings((current) => ({
+                                  ...current,
+                                  [s.key]: e.target.value,
+                                }))
+                              }
+                            >
+                              {s.options.map((o) => (
+                                <option key={o.value} value={String(o.value)}>
+                                  {o.label}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        ))}
                     </div>
                   )}
                 </>
@@ -1094,8 +1121,10 @@ function App() {
 function Room({ room, act, open, copy, games }) {
   const info = games[room.mode] ?? room.meta;
   const isHost = room.you === room.host;
-  const minimum = minimumFor(info);
-  const capacity = room.maxPlayers ?? 8;
+  const botGame =
+    info.bot && room.settings?.[info.bot.setting] === info.bot.value;
+  const minimum = botGame ? 1 : minimumFor(info);
+  const capacity = botGame ? 1 : (room.maxPlayers ?? 8);
   const enough = room.players.length >= minimum;
   const ready =
     enough && room.players.every((p) => p.connected) && teamsReady(room);
@@ -1186,6 +1215,8 @@ function Room({ room, act, open, copy, games }) {
               <PlayerList room={room} />
             )}
             {room.colors && <ColorPicker room={room} act={act} />}
+            {info.sides && <SidePicker room={room} act={act} />}
+            {info.lobbySettings && <LobbySettings room={room} act={act} />}
             <button
               className="invite-button"
               onClick={() => copy(`${location.origin}/?room=${room.code}`)}
@@ -1807,13 +1838,15 @@ function Results({ room, act, info }) {
         </span>
         <div className="eyebrow">THAT’S ONE FOR THE GROUP CHAT</div>
         <h2>
-          {room.mode === "telephone"
-            ? "Well, that took a turn."
-            : winners.length > 1
-              ? room.teamCount
-                ? "Neck and neck. It’s a tie!"
-                : "Great minds draw alike. It’s a tie!"
-              : `${winner.name} takes the crown!`}
+          {info.showFinalState
+            ? (room.gameInfo?.outcome?.summary ?? "Game ended.")
+            : room.mode === "telephone"
+              ? "Well, that took a turn."
+              : winners.length > 1
+                ? room.teamCount
+                  ? "Neck and neck. It’s a tie!"
+                  : "Great minds draw alike. It’s a tie!"
+                : `${winner.name} takes the crown!`}
         </h2>
         <p>
           {room.mode === "telephone"
@@ -1823,6 +1856,9 @@ function Results({ room, act, info }) {
               : "A round of applause for the art, the guesses, and the glorious chaos."}
         </p>
       </div>
+      {info.showFinalState && (
+        <PluginStage room={room} socket={socket} act={act} />
+      )}
       {room.plugin ? (
         <div className="final-scores">
           <Leaderboard

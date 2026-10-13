@@ -11,6 +11,85 @@ export const teamsReady = (room) =>
     room.players.filter((p) => p.team === t),
   ).every((members) => members.length >= room.meta.teams.minPlayers);
 
+export function SidePicker({ room, act }) {
+  const me = room.players.find((p) => p.id === room.you);
+  return (
+    <div className="side-picker">
+      <strong>Choose your side</strong>
+      <div
+        className="side-options"
+        role="radiogroup"
+        aria-label="Choose your side"
+      >
+        {room.meta.sides.map(({ value, label }) => {
+          const owner = room.players.find((p) => p.side === value);
+          const bot =
+            room.meta.bot &&
+            room.settings?.[room.meta.bot.setting] === room.meta.bot.value &&
+            !owner;
+          return (
+            <button
+              type="button"
+              key={value}
+              role="radio"
+              aria-checked={me?.side === value}
+              className={`button outline small ${me?.side === value ? "chosen" : ""}`}
+              onClick={() => act("side", { side: value })}
+            >
+              {label} {owner ? `- ${owner.name}` : bot ? "- Bot" : "- Open"}
+            </button>
+          );
+        })}
+      </div>
+      <p className="form-note">Choosing an occupied side swaps both players.</p>
+    </div>
+  );
+}
+
+// Settings may declare showWhen: {otherKey: value} to appear only when
+// every listed setting currently has that value.
+export const defaultSettings = (meta) =>
+  Object.fromEntries(
+    (meta?.settings ?? []).map((s) => [s.key, s.default ?? s.options[0].value]),
+  );
+export const settingVisible = (setting, values = {}) =>
+  Object.entries(setting.showWhen ?? {}).every(
+    ([key, value]) => String(values[key]) === String(value),
+  );
+
+export function LobbySettings({ room, act }) {
+  const [pending, setPending] = useState(false);
+  async function change(key, value) {
+    setPending(true);
+    try {
+      await act("settings", { settings: { [key]: value } });
+    } finally {
+      setPending(false);
+    }
+  }
+  return (
+    <div className="lobby-settings">
+      {room.meta.settings
+        .filter((setting) => settingVisible(setting, room.settings))
+        .map((setting) => (
+          <label key={setting.key}>
+            {setting.label}
+            <select
+              value={room.settings[setting.key]}
+              disabled={room.you !== room.host || pending}
+              onChange={(e) => change(setting.key, e.target.value)}
+            >
+              {setting.options.map(({ value, label }) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
+        ))}
+    </div>
+  );
+}
 export function TeamPicker({ room, act }) {
   const isHost = room.you === room.host;
   const me = room.players.find((p) => p.id === room.you);

@@ -378,6 +378,7 @@ button:not(:disabled):active,
 }
 .filters {
   display: flex;
+  flex-wrap: wrap;
   gap: 7px;
 }
 .filters button {
@@ -2234,4 +2235,34 @@ img.game-art {
 }
 .leaderboard li > div > span + span {
   margin-top: 2px;
+}
+.side-picker {
+  margin: 18px 0;
+}
+.side-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.side-options .chosen {
+  outline: 2px solid #769656;
+  outline-offset: 2px;
+}
+.lobby-settings {
+  display: grid;
+  gap: 12px;
+  margin: 18px 0;
+}
+.lobby-settings label {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+}
+.lobby-settings select {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #d9d2cc;
+  border-radius: 8px;
+  background: #fff;
 }

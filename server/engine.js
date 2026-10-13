@@ -31,6 +31,44 @@ export const clean = (value, max = 100) =>
 const assert = (condition, message) => {
   if (!condition) throw new Error(message);
 };
+export function playerLimits(room) {
+  const bot = room.meta?.bot;
+  if (bot && room.settings?.[bot.setting] === bot.value)
+    return { min: 1, max: 1 };
+  return {
+    min: room.minPlayers ?? (room.mode === "telephone" ? 3 : 2),
+    max: room.maxPlayers ?? 8,
+  };
+}
+export function setSide(room, id, side) {
+  assert(room.meta?.sides, "This game does not use sides.");
+  assert(
+    ["lobby", "results"].includes(room.phase),
+    "Pick your side between games.",
+  );
+  assert(
+    room.meta.sides.some((s) => s.value === side),
+    "Choose one of the available sides.",
+  );
+  const player = room.players.find((p) => p.id === id);
+  assert(player, "Join the room first.");
+  const owner = room.players.find((p) => p.side === side && p.id !== id);
+  if (owner) owner.side = player.side;
+  player.side = side;
+}
+export function setSettings(room, id, settings) {
+  assert(id === room.host, "Only the host can change game settings.");
+  assert(
+    ["lobby", "results"].includes(room.phase),
+    "Change settings between games.",
+  );
+  const candidate = { ...room, settings };
+  assert(
+    room.players.length <= playerLimits(candidate).max,
+    "A bot game needs exactly one human. The other player must leave first.",
+  );
+  room.settings = settings;
+}
 export function createRoom(
   name,
   mode,
@@ -135,7 +173,7 @@ export function addPlayer(room, id, name) {
       (room.meta?.joinInProgress && room.phase === "playing"),
     "This game has already started. Join the next one!",
   );
-  const max = room.maxPlayers ?? 8;
+  const max = playerLimits(room).max;
   assert(room.players.length < max, `This room is full (${max} players).`);
   const safeName = clean(name, 20);
   assert(safeName, "Enter your name to join.");
@@ -149,6 +187,10 @@ export function addPlayer(room, id, name) {
       room.colors.find((c) => !room.players.some((p) => p.color === c)) ??
       room.colors[0];
   if (room.teamCount) player.team = smallestTeam(room);
+  if (room.meta?.sides)
+    player.side = room.meta.sides.find(
+      (s) => !room.players.some((p) => p.side === s.value),
+    )?.value;
   room.players.push(player);
   room.host ??= id;
 }
@@ -174,9 +216,11 @@ export function startGame(room, id) {
     ["lobby", "results"].includes(room.phase),
     "A game is already in progress.",
   );
-  const minimum = room.minPlayers ?? (room.mode === "telephone" ? 3 : 2);
+  const { min: minimum, max } = playerLimits(room);
   assert(
-    room.players.length >= minimum && room.players.every((p) => p.connected),
+    room.players.length >= minimum &&
+      room.players.length <= max &&
+      room.players.every((p) => p.connected),
     `Gather at least ${minimum} connected ${minimum === 1 ? "player" : "players"} to start.`,
   );
   assert(

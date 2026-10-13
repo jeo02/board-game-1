@@ -63,8 +63,8 @@ test("landing page, game filters, rules, invalid room and mobile layout", async 
   page.on("pageerror", (err) => errors.push(err.message));
   await page.goto("/");
   await expect(page).toHaveTitle("Early Career Game Night");
-  await expect(page.locator(".game-card")).toHaveCount(6);
-  await expect(page.locator(".collection-count")).toContainText("06 games");
+  await expect(page.locator(".game-card")).toHaveCount(7);
+  await expect(page.locator(".collection-count")).toContainText("07 games");
   await expect(
     page
       .locator(".game-card")
@@ -93,8 +93,11 @@ test("landing page, game filters, rules, invalid room and mobile layout", async 
   await page.getByRole("button", { name: "Team games", exact: true }).click();
   await expect(page.locator(".game-card")).toHaveCount(1);
   await expect(page.locator(".game-card")).toContainText("Name Droppers");
+  await page.getByRole("button", { name: "Strategy", exact: true }).click();
+  await expect(page.locator(".game-card")).toHaveCount(1);
+  await expect(page.locator(".game-card")).toContainText("Chess");
   await page.getByRole("button", { name: "All games", exact: true }).click();
-  await expect(page.locator(".game-card")).toHaveCount(6);
+  await expect(page.locator(".game-card")).toHaveCount(7);
   await page.getByRole("button", { name: "How to play" }).first().click();
   await expect(page.locator("dialog")).toContainText("Gather 3–8 players");
   await page.keyboard.press("Escape");
