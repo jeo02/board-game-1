@@ -113,6 +113,42 @@ test("landing page, game filters, rules, invalid room and mobile layout", async 
   });
   expect(errors).toEqual([]);
 });
+test("jeopardy answer input survives periodic game frames", async ({
+  page,
+  browser,
+}) => {
+  const code = await create(page, "Jeopardy Night");
+  const bob = await join(browser, code, "Bob");
+  await page.getByRole("button", { name: "Start game" }).click();
+
+  await expect(page.locator(".j-board")).toBeVisible();
+  const chooser =
+    (await page.locator(".j-cell:not(:disabled)").count()) > 0 ? page : bob;
+  await chooser.locator(".j-cell:not(:disabled)").first().click();
+
+  const wager = chooser.locator('form[data-form="wager"]');
+  if (await wager.isVisible().catch(() => false)) {
+    await wager.locator('input[name="amount"]').fill("5");
+    await wager.getByRole("button", { name: "Lock wager" }).click();
+  } else {
+    const buzzer = (await bob
+      .getByRole("button", { name: "BUZZ IN" })
+      .isVisible())
+      ? bob
+      : page;
+    await buzzer.getByRole("button", { name: "BUZZ IN" }).click();
+  }
+
+  const responder = (await page.locator('form[data-form="answer"]').isVisible())
+    ? page
+    : bob;
+  const input = responder.locator('form[data-form="answer"] input');
+  await input.type("What is still here?", { delay: 35 });
+  await responder.waitForTimeout(1400);
+  await expect(input).toHaveValue("What is still here?");
+  await expect(input).toBeFocused();
+  await bob.context().close();
+});
 test("three people complete a telephone game, see correct chains, and replay", async ({
   page,
   browser,

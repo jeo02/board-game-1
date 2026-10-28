@@ -21,6 +21,7 @@ export function validatePlugin(plugin, folder) {
   if (meta.colors && !meta.colors.every((c) => /^#[0-9a-f]{6}$/i.test(c)))
     throw new Error("meta.colors must be #rrggbb values");
   const teams = meta.teams ? normalizeTeams(meta.teams) : null;
+  const lobby = meta.lobby ? normalizeLobby(meta.lobby) : null;
   const tickRate = Math.min(60, Math.max(1, plugin.tickRate ?? 20));
   return {
     ...plugin,
@@ -42,11 +43,40 @@ export function validatePlugin(plugin, folder) {
       id,
       plugin: true,
       teams,
+      lobby,
       minPlayers: Math.max(1, meta.minPlayers ?? 2),
       maxPlayers: Math.min(MAX_PLAYERS, Math.max(1, meta.maxPlayers ?? 8)),
       client: `/plugins/${id}/client.js`,
       art: meta.art ? `/plugins/${id}/${meta.art}` : null,
     },
+  };
+}
+
+function normalizeLobby(lobby) {
+  if (lobby.kind !== "slots")
+    throw new Error('meta.lobby.kind must be "slots"');
+  if (!Array.isArray(lobby.slots) || lobby.slots.length < 1)
+    throw new Error("meta.lobby.slots must contain at least one slot");
+  const ids = new Set();
+  const slots = lobby.slots.map((slot, index) => {
+    const id = String(slot?.id ?? "").trim();
+    if (!/^[a-z0-9-]{1,24}$/.test(id) || ids.has(id))
+      throw new Error("meta.lobby slot ids must be unique lowercase ids");
+    ids.add(id);
+    const accent = slot.accent ?? "#79629f";
+    if (!/^#[0-9a-f]{6}$/i.test(accent))
+      throw new Error("meta.lobby slot accents must be #rrggbb values");
+    return {
+      id,
+      label: String(slot.label ?? `Slot ${index + 1}`).slice(0, 32),
+      accent,
+    };
+  });
+  return {
+    kind: "slots",
+    label: String(lobby.label ?? "Choose your place").slice(0, 60),
+    required: lobby.required !== false,
+    slots,
   };
 }
 

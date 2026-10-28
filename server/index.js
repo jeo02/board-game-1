@@ -8,6 +8,7 @@ import {
   createRoom,
   addPlayer,
   setColor,
+  setLobbySlot,
   setTeam,
   setTeamCount,
   shuffleTeams,
@@ -90,7 +91,13 @@ function finishGame(room) {
   room.game = null;
   room.phase = "results";
 }
-const pluginPlayer = ({ id, name, color, team }) => ({ id, name, color, team });
+const pluginPlayer = ({ id, name, color, team, lobbySlot }) => ({
+  id,
+  name,
+  color,
+  team,
+  lobbySlot,
+});
 function startPluginGame(room) {
   const plugin = plugins.get(room.mode);
   room.game = plugin.create({
@@ -217,6 +224,8 @@ io.on("connection", (socket) => {
         startGame(room, id);
         if (room.plugin) startPluginGame(room);
       } else if (action === "color") setColor(room, id, payload.color);
+      else if (action === "lobby-slot")
+        setLobbySlot(room, id, clean(payload.slotId, 24));
       else if (action === "team") setTeam(room, id, payload.team);
       else if (action === "teams") setTeamCount(room, id, payload.count);
       else if (action === "shuffle") shuffleTeams(room, id);

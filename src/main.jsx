@@ -31,6 +31,7 @@ import "./styles.css";
 import {
   ColorPicker,
   Leaderboard,
+  LobbySlots,
   PluginStage,
   TeamPicker,
   teamName,
@@ -1098,7 +1099,10 @@ function Room({ room, act, open, copy, games }) {
   const capacity = room.maxPlayers ?? 8;
   const enough = room.players.length >= minimum;
   const ready =
-    enough && room.players.every((p) => p.connected) && teamsReady(room);
+    enough &&
+    room.players.every((p) => p.connected) &&
+    teamsReady(room) &&
+    (room.lobby?.ready ?? true);
   const settingsSummary = (info.settings ?? [])
     .map(
       (s) =>
@@ -1172,6 +1176,7 @@ function Room({ room, act, open, copy, games }) {
             >
               A quick refresher on the rules <ArrowUpRight size={15} />
             </button>
+            <LobbySlots room={room} act={act} />
           </section>
           <section className="players-panel">
             <div className="panel-title">
@@ -1197,9 +1202,11 @@ function Room({ room, act, open, copy, games }) {
               <p>
                 {ready
                   ? "The gang’s here. Let the chaos begin."
-                  : enough && !teamsReady(room)
-                    ? `Every team needs at least ${room.meta.teams.minPlayers} players. Pick a team or shuffle!`
-                    : `Waiting for ${Math.max(0, minimum - room.players.length)} more ${minimum - room.players.length === 1 ? "player" : "players"}${room.players.some((p) => !p.connected) ? " and everyone to reconnect" : ""}…`}
+                  : enough && room.lobby && !room.lobby.ready
+                    ? "Everyone needs to choose an open spot on the stage."
+                    : enough && !teamsReady(room)
+                      ? `Every team needs at least ${room.meta.teams.minPlayers} players. Pick a team or shuffle!`
+                      : `Waiting for ${Math.max(0, minimum - room.players.length)} more ${minimum - room.players.length === 1 ? "player" : "players"}${room.players.some((p) => !p.connected) ? " and everyone to reconnect" : ""}…`}
               </p>
             </div>
             {isHost ? (

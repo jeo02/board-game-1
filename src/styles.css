@@ -989,6 +989,84 @@ select {
   justify-content: center;
   margin: 22px 0;
 }
+.lobby-slots {
+  margin-top: 26px;
+  padding-top: 22px;
+  border-top: 1px solid
+    color-mix(in srgb, var(--theme-accent, #79629f) 25%, transparent);
+}
+.lobby-slots-title {
+  margin-bottom: 14px;
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--theme-ink, #79629f);
+}
+.lobby-stage {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  align-items: end;
+  gap: 12px;
+  padding: 30px 12px 10px;
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 50% 0, #fff9 0 8%, transparent 34%),
+    linear-gradient(180deg, #171b4e 0 58%, #090c2c 58%);
+  box-shadow: inset 0 -10px 30px #0005;
+}
+.lobby-podium {
+  position: relative;
+  min-height: 116px;
+  padding: 40px 10px 14px;
+  border: 2px solid color-mix(in srgb, var(--podium) 72%, white);
+  border-radius: 9px 9px 4px 4px;
+  color: white;
+  background:
+    linear-gradient(180deg, #ffffff18, transparent 35%), var(--podium);
+  box-shadow:
+    inset 0 -24px 30px #0003,
+    0 7px 0 color-mix(in srgb, var(--podium) 55%, black);
+}
+.lobby-podium:hover:not(:disabled) {
+  transform: translateY(-3px);
+}
+.lobby-podium.selected {
+  outline: 4px solid #ffd95a;
+  outline-offset: 3px;
+}
+.lobby-podium.occupied {
+  opacity: 0.78;
+}
+.lobby-podium strong,
+.lobby-podium small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.lobby-podium strong {
+  font:
+    800 14px "Manrope",
+    sans-serif;
+}
+.lobby-podium small {
+  margin-top: 5px;
+  font-size: 9px;
+  color: #ffffffc9;
+}
+.podium-number {
+  position: absolute;
+  top: 9px;
+  left: 50%;
+  width: 25px;
+  height: 25px;
+  display: grid;
+  place-items: center;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background: #090c2c;
+  color: #ffd95a;
+  font-weight: 800;
+}
 .players-panel {
   background: #fffefa;
   border: 1px solid var(--border);

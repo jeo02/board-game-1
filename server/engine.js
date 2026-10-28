@@ -74,6 +74,38 @@ export function createRoom(
   if (plugin?.meta.teams) room.teamCount = plugin.meta.teams.default;
   return room;
 }
+export function lobbyState(room) {
+  const config = room.meta?.lobby;
+  if (!config) return null;
+  const slots = config.slots.map((slot) => {
+    const player = room.players.find((p) => p.lobbySlot === slot.id);
+    return {
+      ...slot,
+      playerId: player?.id ?? null,
+      playerName: player?.name ?? null,
+      connected: player?.connected ?? false,
+    };
+  });
+  const ready =
+    !config.required ||
+    (room.players.length > 0 &&
+      room.players.every((p) => slots.some((s) => s.playerId === p.id)));
+  return {
+    kind: config.kind,
+    label: config.label,
+    required: config.required,
+    ready,
+    slots,
+    players: room.players.map((p) => ({
+      id: p.id,
+      name: p.name,
+      connected: p.connected,
+      slotId: p.lobbySlot ?? null,
+    })),
+    openSlotIds: slots.filter((slot) => !slot.playerId).map((slot) => slot.id),
+  };
+}
+export const lobbyReady = (room) => lobbyState(room)?.ready ?? true;
 const teamSizes = (room) =>
   Array.from(
     { length: room.teamCount },
@@ -149,6 +181,10 @@ export function addPlayer(room, id, name) {
       room.colors.find((c) => !room.players.some((p) => p.color === c)) ??
       room.colors[0];
   if (room.teamCount) player.team = smallestTeam(room);
+  if (room.meta?.lobby?.kind === "slots")
+    player.lobbySlot = room.meta.lobby.slots.find(
+      (slot) => !room.players.some((p) => p.lobbySlot === slot.id),
+    )?.id;
   room.players.push(player);
   room.host ??= id;
 }
@@ -168,6 +204,23 @@ export function setColor(room, id, color) {
   );
   player.color = color;
 }
+export function setLobbySlot(room, id, slotId) {
+  const config = room.meta?.lobby;
+  assert(config?.kind === "slots", "This game does not use lobby slots.");
+  assert(
+    ["lobby", "results"].includes(room.phase),
+    "Choose a slot between games.",
+  );
+  const player = room.players.find((p) => p.id === id);
+  assert(player, "Join the room first.");
+  assert(
+    config.slots.some((slot) => slot.id === slotId),
+    "Choose one of the available slots.",
+  );
+  const owner = room.players.find((p) => p.id !== id && p.lobbySlot === slotId);
+  assert(!owner, `${owner?.name} already chose that spot.`);
+  player.lobbySlot = slotId;
+}
 export function startGame(room, id) {
   assert(id === room.host, "Only the host can start the game.");
   assert(
@@ -183,6 +236,7 @@ export function startGame(room, id) {
     !room.teamCount || teamsReady(room),
     `Every team needs at least ${room.meta?.teams?.minPlayers} players.`,
   );
+  assert(lobbyReady(room), "Everyone needs to choose a lobby spot.");
   room.players.forEach((p) => {
     p.score = 0;
   });
@@ -375,6 +429,7 @@ export function viewFor(room, id) {
   if (room.plugin) {
     delete view.messages;
     delete view.submitted;
+    view.lobby = lobbyState(room);
     return view;
   }
   view.submitted = Object.keys(submissions);

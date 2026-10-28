@@ -147,6 +147,47 @@ export function ColorPicker({ room, act, label = "Pick your color" }) {
   );
 }
 
+export function LobbySlots({ room, act }) {
+  const lobby = room.lobby;
+  if (!lobby || lobby.kind !== "slots") return null;
+  const mine = lobby.players.find((player) => player.id === room.you)?.slotId;
+  return (
+    <div className="lobby-slots">
+      <div className="lobby-slots-title">{lobby.label}</div>
+      <div className="lobby-stage" role="radiogroup" aria-label={lobby.label}>
+        {lobby.slots.map((slot, index) => {
+          const selected = mine === slot.id;
+          const occupied = !!slot.playerId && !selected;
+          return (
+            <button
+              key={slot.id}
+              type="button"
+              role="radio"
+              aria-checked={selected}
+              disabled={occupied}
+              className={`lobby-podium ${selected ? "selected" : ""} ${occupied ? "occupied" : ""}`}
+              style={{ "--podium": slot.accent }}
+              onClick={() =>
+                !selected && act("lobby-slot", { slotId: slot.id })
+              }
+            >
+              <span className="podium-number">{index + 1}</span>
+              <strong>{slot.playerName ?? slot.label}</strong>
+              <small>
+                {selected
+                  ? "Your podium"
+                  : slot.playerName
+                    ? "Taken"
+                    : "Choose podium"}
+              </small>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export function Leaderboard({
   room,
   socket,
