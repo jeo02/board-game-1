@@ -22,6 +22,8 @@ export function validatePlugin(plugin, folder) {
     throw new Error("meta.colors must be #rrggbb values");
   const teams = meta.teams ? normalizeTeams(meta.teams) : null;
   const bots = meta.bots ? normalizeBots(meta.bots, teams) : null;
+  if (plugin.drawing && typeof plugin.drawing.writable !== "function")
+    throw new Error("drawing.writable(state, playerId) is required");
   const tickRate = Math.min(60, Math.max(1, plugin.tickRate ?? 20));
   return {
     ...plugin,

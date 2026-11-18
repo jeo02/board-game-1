@@ -1,6 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  drawingOperation,
+  registerDrawingPlugin,
+  resetCanvas,
+  visibleTo,
+} from "../server/drawing.js";
+import { applyDrawing } from "../src/drawing.js";
+import {
   createRoom,
   addPlayer,
   startGame,
@@ -99,6 +106,55 @@ test("drawing validation and canvas editing are scoped to the artist", () => {
   addStroke(r, "p0", stroke);
   editCanvas(r, "p0", "clear");
   assert.equal(r.strokes.length, 1);
+});
+test("drawing protocol discards previews, scopes edits, and rejects stale canvases", () => {
+  const r = setup();
+  startGame(r, "p0");
+  r.players.forEach((p) => telephoneSubmit(r, p.id, "A duck"));
+  const op = { canvasId: r.canvasId, type: "preview", stroke };
+  let client = viewFor(r, "p0");
+  const preview = drawingOperation(r, "p0", op);
+  assert.equal(applyDrawing(client, preview), client);
+  assert.equal(r.strokes.length, 0);
+  assert.equal(visibleTo(r, "p0", "p1"), false);
+  const add = drawingOperation(r, "p0", { ...op, type: "stroke" });
+  client = applyDrawing(client, add);
+  drawingOperation(r, "p1", { ...op, type: "stroke" });
+  assert.equal(client.strokes.length, 1);
+  assert.deepEqual(client.strokes, viewFor(r, "p0").strokes);
+  assert.ok(!("strokes" in viewFor(r, "p0", false)));
+  client = applyDrawing(
+    client,
+    drawingOperation(r, "p0", { ...op, type: "clear" }),
+  );
+  assert.deepEqual(client.strokes, []);
+  assert.equal(viewFor(r, "p1").strokes.length, 1);
+  resetCanvas(r);
+  assert.throws(() => drawingOperation(r, "p1", op), /closed/);
+  assert.equal(applyDrawing(viewFor(r, "p1"), add).strokes.length, 0);
+});
+test("a plugin can use the same service with its own turn policy", () => {
+  const plugin = {
+    id: "test-sketch",
+    meta: {},
+    drawing: { private: false, writable: (state, id) => state.artist === id },
+  };
+  registerDrawingPlugin(plugin);
+  const r = createRoom("Plugin", plugin.id, 1, 30, plugin);
+  addPlayer(r, "a", "Artist");
+  addPlayer(r, "b", "Viewer");
+  startGame(r, "a");
+  r.game = { artist: "a" };
+  resetCanvas(r);
+  const op = { type: "stroke", canvasId: r.canvasId, stroke };
+  assert.throws(() => drawingOperation(r, "b", op), /turn/);
+  drawingOperation(r, "a", op);
+  assert.equal(viewFor(r, "b").strokes.length, 1);
+  assert.equal(visibleTo(r, "a", "b"), true);
+  assert.throws(
+    () => drawingOperation(r, "a", { ...op, type: "invalid" }),
+    /Unknown/,
+  );
 });
 test("scribble keeps words private, scores once and rotates to results", () => {
   const r = setup("scribble", 2);

@@ -28,6 +28,7 @@ import {
   X,
 } from "lucide-react";
 import "./styles.css";
+import { canvasClient, applyDrawing } from "./drawing.js";
 import {
   ColorPicker,
   Leaderboard,
@@ -464,18 +465,24 @@ function App() {
   }, []);
   useEffect(() => {
     const onRoom = (next) => {
-      setRoom(next);
+      setRoom((current) =>
+        !next.canvasId || next.strokes
+          ? next
+          : {
+              ...next,
+              strokes:
+                current?.canvasId === next.canvasId ? current.strokes : [],
+            },
+      );
       setModal((current) =>
         ["create", "join"].includes(current) ? null : current,
       );
       setError("");
     };
-    const onStroke = (stroke) =>
-      setRoom((current) =>
-        current
-          ? { ...current, strokes: [...(current.strokes || []), stroke] }
-          : current,
-      );
+    const onDrawing = (delta) => {
+      if (delta.type !== "preview")
+        setRoom((current) => applyDrawing(current, delta));
+    };
     const onLeft = () => {
       setRoom(null);
       sessionStorage.removeItem("gameToken");
@@ -484,7 +491,7 @@ function App() {
     const onConnect = () => setConnected(true);
     const onDisconnect = () => setConnected(false);
     socket.on("room", onRoom);
-    socket.on("stroke", onStroke);
+    socket.on("drawing", onDrawing);
     socket.on("left", onLeft);
     socket.on("connect", onConnect);
     socket.on("disconnect", onDisconnect);
@@ -494,7 +501,7 @@ function App() {
     if (code) setModal("join");
     return () => {
       socket.off("room", onRoom);
-      socket.off("stroke", onStroke);
+      socket.off("drawing", onDrawing);
       socket.off("left", onLeft);
       socket.off("connect", onConnect);
       socket.off("disconnect", onDisconnect);
@@ -515,23 +522,30 @@ function App() {
       return false;
     }
     return new Promise((resolve) =>
-      socket.timeout(5000).emit("action", action, payload, (err, response) => {
-        if (err || !response?.ok) {
-          setError(
-            err
-              ? "The server did not respond. Please try again."
-              : response.error,
-          );
-          resolve(false);
-        } else {
-          if (response.token) {
-            sessionStorage.setItem("gameToken", response.token);
-            socket.auth.token = response.token;
-            localStorage.setItem("playerName", name);
-          }
-          resolve(true);
-        }
-      }),
+      socket
+        .timeout(5000)
+        .emit(
+          ...(action === "drawing"
+            ? ["drawing", payload]
+            : ["action", action, payload]),
+          (err, response) => {
+            if (err || !response?.ok) {
+              setError(
+                err
+                  ? "The server did not respond. Please try again."
+                  : response.error,
+              );
+              resolve(false);
+            } else {
+              if (response.token) {
+                sessionStorage.setItem("gameToken", response.token);
+                socket.auth.token = response.token;
+                localStorage.setItem("playerName", name);
+              }
+              resolve(true);
+            }
+          },
+        ),
     );
   }
   const open = (type, mode = game) => {
@@ -1419,10 +1433,10 @@ function Telephone({ room, act }) {
         <>
           <blockquote>{room.previous?.text}</blockquote>
           <DrawingCanvas
+            variant="telephone"
             strokes={room.strokes}
             editable
-            onStroke={(s) => act("stroke", s)}
-            onEdit={(action) => act("canvas", { action })}
+            service={canvasClient(socket, room, act)}
           />
         </>
       ) : (
@@ -1553,10 +1567,10 @@ function Scribble({ room, act }) {
             <strong className="secret-word">{room.word || room.hint}</strong>
           </div>
           <DrawingCanvas
+            variant="scribble"
             strokes={room.strokes}
             editable={youDraw && room.phase === "drawing"}
-            onStroke={(s) => act("stroke", s)}
-            onEdit={(action) => act("canvas", { action })}
+            service={canvasClient(socket, room, act)}
           />
           {room.phase === "reveal" && (
             <div className="round-result">
@@ -1661,10 +1675,19 @@ function paint(ctx, stroke, width, height) {
 function paintLatestSegment(ctx, stroke, width, height) {
   paint(ctx, { ...stroke, points: stroke.points.slice(-2) }, width, height);
 }
-function DrawingCanvas({ strokes = [], editable = false, onStroke, onEdit }) {
+function DrawingCanvas({
+  strokes = [],
+  editable = false,
+  service,
+  variant = "",
+}) {
   const canvas = useRef(null);
   const current = useRef(null);
   const renderedStrokes = useRef(null);
+  const previewDirty = useRef(false);
+  const previewBase = useRef(null);
+  const previewFrom = useRef(0);
+  const lastPreview = useRef(0);
   const [color, setColor] = useState(COLORS[0]);
   const [width, setWidth] = useState(7);
   const redraw = () => {
@@ -1672,7 +1695,7 @@ function DrawingCanvas({ strokes = [], editable = false, onStroke, onEdit }) {
     if (!ctx) return;
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, 800, 440);
-    strokes.forEach((s) => paint(ctx, s, 800, 440));
+    (renderedStrokes.current || []).forEach((s) => paint(ctx, s, 800, 440));
     if (current.current) paint(ctx, current.current, 800, 440);
   };
   useEffect(() => {
@@ -1683,13 +1706,44 @@ function DrawingCanvas({ strokes = [], editable = false, onStroke, onEdit }) {
       previous &&
       strokes.length >= previous.length &&
       previous.every((stroke, index) => stroke === strokes[index]);
-    if (appended)
+    renderedStrokes.current = strokes;
+    if (appended) {
+      if (previewDirty.current) ctx.drawImage(previewBase.current, 0, 0);
       strokes
         .slice(previous.length)
         .forEach((stroke) => paint(ctx, stroke, 800, 440));
-    else redraw();
-    renderedStrokes.current = strokes;
+    } else redraw();
+    previewDirty.current = false;
   }, [strokes]);
+  useEffect(() => {
+    if (!service || editable) return;
+    let timer;
+    const off = service.subscribe((stroke) => {
+      // Restore the committed pixels after a lossy preview without replaying
+      // the entire drawing for each new stroke.
+      if (!previewDirty.current) {
+        if (!previewBase.current) {
+          previewBase.current = document.createElement("canvas");
+          previewBase.current.width = canvas.current.width;
+          previewBase.current.height = canvas.current.height;
+        }
+        previewBase.current.getContext("2d").drawImage(canvas.current, 0, 0);
+      }
+      previewDirty.current = true;
+      paint(canvas.current.getContext("2d"), stroke, 800, 440);
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        if (previewDirty.current) {
+          canvas.current.getContext("2d").drawImage(previewBase.current, 0, 0);
+          previewDirty.current = false;
+        }
+      }, 2500);
+    });
+    return () => {
+      off();
+      clearTimeout(timer);
+    };
+  }, [service?.canvasId, editable]);
   const point = (e) => {
     const r = canvas.current.getBoundingClientRect();
     return [
@@ -1701,11 +1755,13 @@ function DrawingCanvas({ strokes = [], editable = false, onStroke, onEdit }) {
     if (current.current) {
       const stroke = current.current;
       current.current = null;
-      onStroke?.(stroke);
+      service.write("stroke", stroke).then((ok) => {
+        if (!ok) redraw();
+      });
     }
   };
   return (
-    <div className="drawing-area">
+    <div className={`drawing-area ${variant}-canvas`}>
       <canvas
         ref={canvas}
         width={800}
@@ -1718,6 +1774,8 @@ function DrawingCanvas({ strokes = [], editable = false, onStroke, onEdit }) {
           e.preventDefault();
           canvas.current.setPointerCapture(e.pointerId);
           current.current = { color, width, points: [point(e)] };
+          previewFrom.current = 0;
+          lastPreview.current = 0;
           paintLatestSegment(
             canvas.current.getContext("2d"),
             current.current,
@@ -1728,6 +1786,17 @@ function DrawingCanvas({ strokes = [], editable = false, onStroke, onEdit }) {
         onPointerMove={(e) => {
           if (current.current && editable) {
             current.current.points.push(point(e));
+            const { points } = current.current;
+            if (performance.now() - lastPreview.current >= 40) {
+              service.preview({
+                ...current.current,
+                points: points.slice(
+                  Math.max(previewFrom.current, points.length - 64),
+                ),
+              });
+              previewFrom.current = points.length - 1;
+              lastPreview.current = performance.now();
+            }
             paintLatestSegment(
               canvas.current.getContext("2d"),
               current.current,
@@ -1785,14 +1854,14 @@ function DrawingCanvas({ strokes = [], editable = false, onStroke, onEdit }) {
             <button
               className="icon-button"
               aria-label="Undo last stroke"
-              onClick={() => onEdit("undo")}
+              onClick={() => service.write("undo")}
             >
               <Undo2 size={18} />
             </button>
             <button
               className="icon-button"
               aria-label="Clear canvas"
-              onClick={() => onEdit("clear")}
+              onClick={() => service.write("clear")}
             >
               <RotateCcw size={17} />
             </button>

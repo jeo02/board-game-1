@@ -7,6 +7,7 @@ import {
   Medal,
   Shuffle,
 } from "lucide-react";
+import { canvasClient } from "./drawing.js";
 
 // Team helpers shared by the lobby, live leaderboard and results.
 export const teamName = (room, team) =>
@@ -366,6 +367,11 @@ export function PluginStage({ room, socket, act }) {
     const api = {
       you: room.you,
       getRoom: () => roomRef.current,
+      get drawing() {
+        return roomRef.current.canvasId
+          ? canvasClient(socket, roomRef.current, act)
+          : null;
+      },
       onFrame(handler) {
         handlers.add(handler);
         return () => handlers.delete(handler);
