@@ -1,4 +1,6 @@
 import { randomBytes } from "node:crypto";
+import { resetCanvas, canvasSnapshot } from "./drawing.js";
+export { addStroke, editCanvas } from "./drawing.js";
 
 export const WORDS = [
   "telescope",
@@ -269,8 +271,8 @@ export function startGame(room, id) {
   room.turn = 0;
   room.messages = [];
   room.submissions = {};
-  room.strokes = [];
   if (room.mode === "telephone") {
+    resetCanvas(room);
     room.chains = room.players.map((p) => ({ owner: p.name, entries: [] }));
     room.phase = "prompt";
     room.deadline = null;
@@ -278,7 +280,7 @@ export function startGame(room, id) {
 }
 export function startDrawingTurn(room) {
   room.phase = "choose";
-  room.strokes = [];
+  resetCanvas(room);
   room.guessed = [];
   room.word = null;
   room.messages = [];
@@ -328,67 +330,13 @@ export function telephoneSubmit(room, id, value) {
   if (room.players.every((p) => room.submissions[p.id])) {
     room.round++;
     room.submissions = {};
-    room.strokes = [];
+    resetCanvas(room);
     room.phase =
       room.round >= room.players.length
         ? "results"
         : room.round % 2
           ? "draw"
           : "describe";
-  }
-}
-export function addStroke(room, id, stroke) {
-  assert(
-    (room.phase === "draw" && !room.submissions[id]) ||
-      (room.phase === "drawing" && room.drawer === id),
-    "It is not your drawing turn.",
-  );
-  assert(
-    room.players.some((p) => p.id === id),
-    "Join the room first.",
-  );
-  assert(
-    stroke &&
-      /^#[0-9a-f]{6}$/i.test(stroke.color) &&
-      [3, 7, 14, 24].includes(stroke.width),
-    "Invalid brush.",
-  );
-  assert(
-    Array.isArray(stroke.points) &&
-      stroke.points.length >= 1 &&
-      stroke.points.length <= 1000 &&
-      stroke.points.every(
-        (p) =>
-          Array.isArray(p) &&
-          p.length === 2 &&
-          p.every((n) => Number.isFinite(n) && n >= 0 && n <= 1),
-      ),
-    "Invalid drawing.",
-  );
-  assert(
-    room.strokes.filter((s) => s.player === id).length < 1500,
-    "Canvas is full. Clear or undo to keep drawing.",
-  );
-  const added = {
-    color: stroke.color,
-    width: stroke.width,
-    points: stroke.points,
-    player: id,
-  };
-  room.strokes.push(added);
-  return added;
-}
-export function editCanvas(room, id, action) {
-  assert(
-    (room.phase === "draw" && !room.submissions[id]) ||
-      (room.phase === "drawing" && room.drawer === id),
-    "It is not your drawing turn.",
-  );
-  if (action === "clear")
-    room.strokes = room.strokes.filter((s) => s.player !== id);
-  else if (action === "undo") {
-    const index = room.strokes.findLastIndex((s) => s.player === id);
-    if (index >= 0) room.strokes.splice(index, 1);
   }
 }
 export function guess(room, id, value, now = Date.now()) {
@@ -441,19 +389,17 @@ export function tick(room, now = Date.now()) {
   } else return false;
   return true;
 }
-export function viewFor(room, id) {
+export function viewFor(room, id, includeCanvas = true) {
   const { word, choices, chains, submissions, strokes, game, ...view } = room;
   view.you = id;
   if (room.plugin) {
     delete view.messages;
     delete view.submitted;
+    if (room.canvasId && includeCanvas) view.strokes = canvasSnapshot(room, id);
     return view;
   }
   view.submitted = Object.keys(submissions);
-  view.strokes =
-    room.mode === "telephone"
-      ? strokes.filter((s) => s.player === id)
-      : strokes;
+  if (includeCanvas) view.strokes = canvasSnapshot(room, id);
   if (room.mode === "telephone") {
     const index = room.players.findIndex((p) => p.id === id);
     view.previous =

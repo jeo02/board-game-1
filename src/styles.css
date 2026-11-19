@@ -1217,6 +1217,17 @@ blockquote {
   touch-action: none;
   cursor: crosshair;
 }
+.telephone-canvas {
+  border: 2px dashed #aa93bb;
+  border-radius: 14px;
+}
+.scribble-canvas {
+  border: 3px solid #d59d57;
+  border-radius: 5px;
+}
+.scribble-canvas .canvas-toolbar {
+  background: #fff3e1;
+}
 .canvas-toolbar {
   border-top: 1px solid #e9e0f0;
   display: flex;
@@ -1673,6 +1684,7 @@ blockquote {
   }
   .filters {
     gap: 4px;
+    flex-wrap: wrap;
   }
   .filters button {
     font-size: 10px;

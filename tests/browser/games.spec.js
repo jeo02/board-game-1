@@ -63,8 +63,8 @@ test("landing page, game filters, rules, invalid room and mobile layout", async 
   page.on("pageerror", (err) => errors.push(err.message));
   await page.goto("/");
   await expect(page).toHaveTitle("Early Career Game Night");
-  await expect(page.locator(".game-card")).toHaveCount(7);
-  await expect(page.locator(".collection-count")).toContainText("07 games");
+  await expect(page.locator(".game-card")).toHaveCount(8);
+  await expect(page.locator(".collection-count")).toContainText("08 games");
   await expect(
     page
       .locator(".game-card")
@@ -94,10 +94,10 @@ test("landing page, game filters, rules, invalid room and mobile layout", async 
   await expect(page.locator(".game-card")).toHaveCount(1);
   await expect(page.locator(".game-card")).toContainText("Name Droppers");
   await page.getByRole("button", { name: "Board games", exact: true }).click();
-  await expect(page.locator(".game-card")).toHaveCount(1);
-  await expect(page.locator(".game-card")).toContainText("Chess");
+  await expect(page.locator(".game-card")).toHaveCount(2);
+  await expect(page.locator(".game-card h3")).toHaveText(["Chess", "Sorry!"]);
   await page.getByRole("button", { name: "All games", exact: true }).click();
-  await expect(page.locator(".game-card")).toHaveCount(7);
+  await expect(page.locator(".game-card")).toHaveCount(8);
   await page.getByRole("button", { name: "How to play" }).first().click();
   await expect(page.locator("dialog")).toContainText("Gather 3–8 players");
   await page.keyboard.press("Escape");
@@ -190,7 +190,15 @@ test("scribble synchronizes drawing, hides words, scores guesses, and finishes",
   const word = await page.locator(".word-choices button").first().innerText();
   await page.locator(".word-choices button").first().click();
   await expect(guest.locator(".secret-word")).not.toHaveText(word);
-  await draw(page);
+  const box = await page
+    .getByRole("img", { name: "Drawing canvas" })
+    .boundingBox();
+  await page.mouse.move(box.x + 30, box.y + 30);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 120, box.y + 80, { steps: 8 });
+  await expect.poll(() => canvasHasInk(guest)).toBe(true);
+  await page.mouse.up();
+  await guest.reload();
   const canvas = guest.locator("canvas");
   await expect.poll(() => canvasHasInk(guest)).toBe(true);
   await page.getByRole("button", { name: "Undo last stroke" }).click();
@@ -235,6 +243,63 @@ test("scribble synchronizes drawing, hides words, scores guesses, and finishes",
   await expect(
     guest.getByRole("heading", { name: "Pull up a chair." }),
   ).toBeVisible();
+  await guest.context().close();
+});
+test("Sorry! players draw and play a legal move on a shared board", async ({
+  page,
+  browser,
+}) => {
+  const code = await create(page, "Sorry!");
+  const guest = await join(browser, code, "Sam");
+  await guest.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("button", { name: "Start game" }).click();
+  for (const p of [page, guest]) {
+    await expect(p.getByRole("img", { name: /Sorry! board/ })).toBeVisible();
+    await expect(p.locator(".key")).toContainText("Red: Alex");
+    const board = p.getByRole("img", { name: /Sorry! board/ });
+    const layout = await board.evaluate((svg) => {
+      const pawns = [...svg.querySelectorAll(".pawn")];
+      const faces = pawns.map((p) =>
+        p.querySelector("circle").getBoundingClientRect(),
+      );
+      return {
+        boardWidth: svg.getBoundingClientRect().width,
+        fits: pawns.every((p, i) => {
+          const label = p.querySelector("text").getBoundingClientRect(),
+            face = faces[i];
+          return (
+            label.left >= face.left &&
+            label.right <= face.right &&
+            faces.every(
+              (other, j) =>
+                i === j ||
+                face.right <= other.left ||
+                other.right <= face.left ||
+                face.bottom <= other.top ||
+                other.bottom <= face.top,
+            )
+          );
+        }),
+      };
+    });
+    expect(layout.fits).toBe(true);
+    if (p === page) expect(layout.boardWidth).toBeGreaterThan(560);
+  }
+  await guest.getByRole("button", { name: "Enlarge board" }).click();
+  await expect(guest.locator("body")).toHaveJSProperty("scrollWidth", 390);
+  expect(
+    await guest
+      .locator(".map")
+      .evaluate((el) => el.scrollWidth > el.clientWidth),
+  ).toBe(true);
+  await guest.getByRole("button", { name: "Fit board" }).click();
+  const active = (await page.getByRole("button", { name: "Draw card" }).count())
+    ? page
+    : guest;
+  await active.getByRole("button", { name: "Draw card" }).click();
+  await active.getByRole("button", { name: "Play move" }).click();
+  for (const p of [page, guest])
+    await expect(p.locator(".last")).toContainText("drew");
   await guest.context().close();
 });
 test("slither: pick colors, play live, join mid-round, and see the leaderboard", async ({

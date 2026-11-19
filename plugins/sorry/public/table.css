@@ -1,0 +1,145 @@
+:host {
+  display: block;
+  color: #303e3b;
+  font:
+    15px/1.4 system-ui,
+    sans-serif;
+}
+header,
+.controls,
+.legend,
+.key {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+header {
+  justify-content: space-between;
+  padding: 8px 4px 14px;
+}
+h2 {
+  font:
+    bold 1.45rem/1.2 Georgia,
+    serif;
+  margin: 3px 0 0;
+  overflow-wrap: anywhere;
+}
+small {
+  font: 700 11px/1.2 system-ui;
+  color: #796448;
+  text-transform: uppercase;
+  letter-spacing: 0.13em;
+}
+.board {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.map {
+  overflow: auto;
+}
+.map.expanded {
+  max-height: 75vh;
+}
+.map.expanded .board {
+  width: max(115%, 800px);
+}
+.zoom {
+  background: white;
+  color: #395c56;
+  min-height: 34px;
+  font-size: 13px;
+}
+.board text {
+  font:
+    700 21px system-ui,
+    sans-serif;
+  text-anchor: middle;
+  dominant-baseline: central;
+}
+.board .card-rank {
+  font:
+    bold 62px Georgia,
+    serif;
+}
+.controls {
+  max-width: 100%;
+}
+button,
+select {
+  box-sizing: border-box;
+  max-width: 100%;
+  min-height: 42px;
+  font: inherit;
+  padding: 7px 12px;
+  border: 1px solid #c5b9a2;
+  border-radius: 9px;
+}
+select {
+  background: #fffdfa;
+  color: #303e3b;
+}
+button {
+  background: #324d48;
+  color: white;
+  font-weight: 650;
+  cursor: pointer;
+}
+button:disabled {
+  opacity: 0.6;
+}
+.legend {
+  justify-content: center;
+  column-gap: 18px;
+  padding: 10px 0;
+  color: #675b48;
+  font-size: 13px;
+}
+.legend span,
+.key span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.legend i {
+  width: 14px;
+  height: 14px;
+  background: #b7a079;
+}
+.legend .start {
+  border-radius: 4px;
+}
+.legend .home {
+  clip-path: polygon(0 32%, 50% 0, 100% 32%, 100% 100%, 0 100%);
+}
+.legend .slide {
+  width: 20px;
+  clip-path: polygon(0 10%, 44% 41%, 100% 41%, 100% 59%, 44% 59%, 0 90%);
+}
+.key {
+  border-top: 1px solid #e6decb;
+  padding: 12px 0 4px;
+}
+.key span {
+  background: #f7f4ed;
+  padding: 4px 9px;
+  border-radius: 12px;
+  overflow-wrap: anywhere;
+  max-width: 100%;
+}
+.key span::before {
+  content: "";
+  flex: 0 0 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--ink);
+}
+.last {
+  margin: 6px 0;
+  overflow-wrap: anywhere;
+}
+a {
+  font-size: 13px;
+  color: #395c56;
+}

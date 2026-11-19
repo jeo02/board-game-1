@@ -17,18 +17,23 @@ import {
   telephoneSubmit,
   chooseWord,
   guess,
-  addStroke,
-  editCanvas,
   viewFor,
   tick,
   clean,
 } from "./engine.js";
 import { loadPlugins, sanitizeSettings } from "./plugins.js";
+import {
+  drawingOperation,
+  visibleTo,
+  registerDrawingPlugin,
+  resetCanvas,
+} from "./drawing.js";
 
 const pluginDir = process.env.PLUGINS_DIR
   ? path.resolve(process.env.PLUGINS_DIR)
   : fileURLToPath(new URL("../plugins", import.meta.url));
 const plugins = await loadPlugins(pluginDir);
+for (const plugin of plugins.values()) registerDrawingPlugin(plugin);
 console.log(
   `Loaded ${plugins.size} game plugin(s)${plugins.size ? ": " + [...plugins.keys()].join(", ") : ""}`,
 );
@@ -44,8 +49,9 @@ function broadcast(room) {
   const { game, ...shared } = room;
   const plugin = plugins.get(room.mode);
   if (plugin && game) shared.gameInfo = plugin.publicState?.(game) ?? null;
-  for (const p of room.players)
-    if (p.socketId)
+  for (const p of room.players) {
+    const client = io.sockets.sockets.get(p.socketId);
+    if (client) {
       io.to(p.socketId).emit(
         "room",
         viewFor(
@@ -54,8 +60,12 @@ function broadcast(room) {
             players: room.players.map(({ socketId, ...safe }) => safe),
           },
           p.id,
+          !room.canvasId || client.data.canvasId !== room.canvasId,
         ),
       );
+      client.data.canvasId = room.canvasId;
+    }
+  }
 }
 function stopGame(room, notice) {
   room.game = null;
@@ -94,9 +104,16 @@ function finishGame(room) {
 const pluginPlayer = ({ id, name, color, team }) => ({ id, name, color, team });
 function startPluginGame(room) {
   const plugin = plugins.get(room.mode);
+  if (plugin.drawing) resetCanvas(room);
   room.game = plugin.create({
     players: room.players.map(pluginPlayer),
     settings: room.settings,
+    ...(plugin.drawing && {
+      resetCanvas: () => {
+        resetCanvas(room);
+        broadcast(room);
+      },
+    }),
     teams: room.teamCount
       ? Array.from({ length: room.teamCount }, (_, i) => ({
           index: i,
@@ -116,15 +133,6 @@ function sendFrames(room, plugin) {
     const frame = plugin.frame(room.game, p.id);
     if (frame) io.to(p.socketId).volatile.emit("frame", frame);
   }
-}
-function broadcastStroke(room, stroke, authorId) {
-  room.updatedAt = Date.now();
-  const recipients =
-    room.mode === "telephone"
-      ? room.players.filter((p) => p.id === authorId)
-      : room.players;
-  for (const p of recipients)
-    if (p.socketId) io.to(p.socketId).emit("stroke", stroke);
 }
 function leave(socket) {
   const room = rooms.get(socket.data.code);
@@ -239,12 +247,6 @@ io.on("connection", (socket) => {
       else if (action === "submit") telephoneSubmit(room, id, payload.text);
       else if (action === "choose") chooseWord(room, id, payload.word);
       else if (action === "guess") guess(room, id, payload.text);
-      else if (action === "stroke") {
-        const stroke = addStroke(room, id, payload);
-        ack({ ok: true });
-        broadcastStroke(room, stroke, id);
-        return;
-      } else if (action === "canvas") editCanvas(room, id, payload.action);
       else if (action === "lobby") {
         if (id !== room.host || room.phase !== "results")
           throw new Error(
@@ -258,6 +260,33 @@ io.on("connection", (socket) => {
       broadcast(room);
     } catch (error) {
       ack({ ok: false, error: error.message });
+    }
+  });
+  let windowStart = 0,
+    events = 0;
+  socket.on("drawing", (op, ack) => {
+    try {
+      const now = Date.now();
+      if (now - windowStart >= 1000) {
+        windowStart = now;
+        events = 0;
+      }
+      if (++events > 80) throw new Error("Too many drawing updates.");
+      const room = rooms.get(socket.data.code),
+        id = socket.data.playerId;
+      if (!room?.players.some((p) => p.id === id && p.socketId === socket.id))
+        throw new Error("Join the room first.");
+      const delta = drawingOperation(room, id, op);
+      room.updatedAt = now;
+      for (const p of room.players) {
+        if (!p.connected || !visibleTo(room, id, p.id)) continue;
+        const target = io.to(p.socketId);
+        if (delta.type !== "preview") target.emit("drawing", delta);
+        else if (p.id !== id) target.volatile.emit("drawing", delta);
+      }
+      if (typeof ack === "function") ack({ ok: true });
+    } catch (error) {
+      if (typeof ack === "function") ack({ ok: false, error: error.message });
     }
   });
   // Realtime input bypasses the action ack/throttle path: it is fire-and-forget
